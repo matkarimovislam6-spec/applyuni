@@ -115,10 +115,10 @@ em { font-style: italic; }
   margin: 0; pointer-events: none; user-select: none; white-space: pre;
 }
 .float { position: absolute; z-index: 0; animation: drift 14s ease-in-out infinite alternate; }
-.a1 { top: 40px; left: 3%; }
-.a2 { top: 70px; right: 4%; animation-delay: -4s; }
-.a3 { top: 46%; left: 6%; animation-delay: -8s; }
-.a4 { top: 31%; right: 9%; animation-delay: -2s; }
+.a1 { top: 36px; left: 1.5%; }
+.a2 { top: 44px; right: 2.5%; animation-delay: -4s; }
+.a3 { top: 50%; left: 6%; animation-delay: -8s; }
+.a4 { top: 49%; right: 5%; animation-delay: -2s; }
 @keyframes drift { to { transform: translate(10px, -14px); } }
 @media (prefers-reduced-motion: reduce) {
   .float, .rotator-word { animation: none; }
@@ -297,3 +297,5 @@ main.container.section { padding-top: 40px; }
   .panel { padding: 24px; }
   .program-name { font-size: 1.35rem; }
 }
+/* On medium screens the drawings would crowd the headline: keep only the outer ones, smaller. */
+@media (max-width: 1280px) { .hero .float { font-size: 8px; } .hero .a3, .hero .a4 { display: none; } }

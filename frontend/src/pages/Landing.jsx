@@ -23,7 +23,7 @@ export default function Landing() {
   return (
     <main>
       <section className="hero">
-        <Ascii art="colosseum" className="float a1" />
+        <Ascii art="duomo" className="float a1" />
         <Ascii art="pizza" className="float a2" />
         <Ascii art="espresso" className="float a3" />
         <Ascii art="pisa" className="float a4" />
