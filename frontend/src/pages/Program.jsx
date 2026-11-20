@@ -24,16 +24,17 @@ export default function Program() {
   const cl = data.checklist;
   return (
     <main className="container section stack">
-      <Link to="/programs" className="small">← All universities</Link>
+      <Link to="/programs" className="mono-label back">← All programmes</Link>
       <div>
-        <h1>{data.name}</h1>
-        <p className="muted">{data.university} · {data.city} · {data.degree} · {data.language === 'en' ? 'taught in English' : 'taught in Italian'}</p>
+        <p className="mono-label">{data.university} · {data.city}</p>
+        <h1 className="display-sm">{data.name}</h1>
+        <p className="lead">{data.degree === 'bachelor' ? 'Bachelor' : 'Master'} · {data.language === 'en' ? 'taught in English' : 'taught in Italian'}</p>
       </div>
 
-      <div className="card row wrap small">
-        <span>Deadline: {data.deadline ? new Date(data.deadline).toLocaleDateString() : <span className="warn-text">not verified yet, check the official call</span>}</span>
-        <span>Application fee: {data.application_fee_eur != null ? `€${data.application_fee_eur}` : '—'}</span>
-        <a href={data.source_url || data.website} target="_blank" rel="noreferrer">Official website ↗</a>
+      <div className="facts">
+        <div><span className="mono-label">Deadline</span>{data.deadline ? new Date(data.deadline).toLocaleDateString() : <span className="warn-text">Not verified yet</span>}</div>
+        <div><span className="mono-label">Application fee</span>{data.application_fee_eur != null ? `€${data.application_fee_eur}` : '—'}</div>
+        <div><span className="mono-label">Source</span><a href={data.source_url || data.website} target="_blank" rel="noreferrer">Official website ↗</a></div>
       </div>
 
       <div className="layout">
