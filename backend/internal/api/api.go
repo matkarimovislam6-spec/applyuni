@@ -61,6 +61,7 @@ func New(svc *service.Service, tokens *auth.Issuer, corsOrigin string, maxUpload
 		r.Group(func(r chi.Router) {
 			r.Use(tokens.Middleware)
 			r.Get("/me", a.me)
+			r.Get("/me/matches", a.matches)
 			r.Get("/students", a.listStudents)
 			r.Post("/students", a.createStudent)
 			r.Get("/students/{id}", a.getStudent)
@@ -205,6 +206,15 @@ func (a *API) logout(w http.ResponseWriter, _ *http.Request) {
 
 func (a *API) me(w http.ResponseWriter, r *http.Request) {
 	m, err := a.svc.Me(r.Context(), claims(r))
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, m)
+}
+
+func (a *API) matches(w http.ResponseWriter, r *http.Request) {
+	m, err := a.svc.Matches(r.Context(), claims(r))
 	if err != nil {
 		a.fail(w, r, err)
 		return

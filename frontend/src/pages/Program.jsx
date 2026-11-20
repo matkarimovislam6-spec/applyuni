@@ -4,6 +4,7 @@ import { api } from '../api.js';
 import Waitlist from '../Waitlist.jsx';
 import { useAuth } from '../auth.jsx';
 import { DeadlineFact, FeeFact, Rounds } from '../Deadline.jsx';
+import { CheckList, ScoreRing, VERDICTS } from '../Match.jsx';
 
 const DEFAULT = { school_years: 11, completed_university_years: 0, english_test: '', documents_language: 'uz', wants_scholarship: true };
 
@@ -19,6 +20,13 @@ export default function Program() {
   useEffect(() => {
     if (saved) setProfile((p) => ({ ...p, ...saved }));
   }, [saved]);
+
+  // Logged in: the pre-screening result for this programme.
+  const [match, setMatch] = useState(null);
+  useEffect(() => {
+    if (!user) return setMatch(null);
+    api.matches().then((ms) => setMatch(ms.find((m) => m.program.id === id) || null)).catch(() => setMatch(null));
+  }, [user, id, saved]);
 
   // Recompute the checklist whenever an answer changes.
   useEffect(() => {
@@ -54,6 +62,26 @@ export default function Program() {
         <FeeFact program={data} />
         <div className="dl-fact"><span className="mono-label">Source</span><a href={data.source_url || data.call_source_url || data.website} target="_blank" rel="noreferrer">Official website ↗</a></div>
       </div>
+
+      {user && match && (
+        <section className={`card your-match ${VERDICTS[match.verdict]?.tone}`}>
+          <div className="match-head">
+            <ScoreRing score={match.score} tone={VERDICTS[match.verdict]?.tone} />
+            <div className="match-title">
+              <span className="mono-label">Your match</span>
+              <strong className="verdict-big">{VERDICTS[match.verdict]?.label}</strong>
+            </div>
+            <Link to="/account" className="small">Edit profile →</Link>
+          </div>
+          <CheckList checks={match.checks} />
+        </section>
+      )}
+      {user && !match && data && (
+        <p className="small muted">This is a {data.degree === 'master' ? "master's" : "bachelor's"} programme; your matches cover the level you chose in <Link to="/account">your profile</Link>.</p>
+      )}
+      {!user && (
+        <div className="notice small"><Link to="/signup" state={{ from: `/programs/${id}` }}>Create an account</Link> to see how well you match this programme and what you'd need to fix.</div>
+      )}
 
       <Rounds program={data} />
 

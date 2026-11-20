@@ -105,3 +105,38 @@ func TestCatalogueDeadlines(t *testing.T) {
 		t.Fatalf("getProgram: %v %+v", err, one)
 	}
 }
+
+// Matches pre-screen a real account against the seeded catalogue.
+func TestMatchesForStudent(t *testing.T) {
+	ctx := context.Background()
+	s, _ := newTestService(t)
+	sess, err := s.Register(ctx, RegisterInput{Username: "bahar", Password: "supersecret1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, _ := s.Tokens.Parse(sess.Token)
+	me, _ := s.Me(ctx, c)
+	prof := []byte(`{"degree_target":"master","education_level":"bachelor_done","major":"computer_science","gpa":"3.33/4","documents_language":"mixed"}`)
+	if _, err := s.UpdateProfile(ctx, c, *me.StudentID, prof); err != nil {
+		t.Fatal(err)
+	}
+	ms, err := s.Matches(ctx, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ms) == 0 {
+		t.Fatal("no matches")
+	}
+	for _, m := range ms {
+		if m.Program.Degree != "master" {
+			t.Errorf("only master's programmes expected, got %s", m.Program.Name)
+		}
+		if len(m.Checks) == 0 {
+			t.Errorf("%s has no checks", m.Program.Name)
+		}
+	}
+	// Padova's only round has closed, so it must sort last with verdict "closed"
+	if last := ms[len(ms)-1]; last.Verdict != "closed" || last.Program.University != "University of Padova" {
+		t.Errorf("expected Padova closed last, got %s / %s", last.Program.University, last.Verdict)
+	}
+}
