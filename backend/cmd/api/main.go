@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -84,6 +85,12 @@ func run(log *slog.Logger) error {
 	}
 	// The portal agent reads verification codes from the students' platform inboxes.
 	svc.Portals = portals(log, svc.Inbox())
+	svc.PlatformAdmins = map[string]bool{}
+	for _, u := range strings.Split(os.Getenv("PLATFORM_ADMINS"), ",") {
+		if u = strings.ToLower(strings.TrimSpace(u)); u != "" {
+			svc.PlatformAdmins[u] = true
+		}
+	}
 	if cfg.InboundSecret == "" {
 		log.Warn("INBOUND_SECRET not set - inbound email disabled; portals that email a code can't be automated")
 	}

@@ -222,9 +222,15 @@ func (s *Service) ReviewDocument(ctx context.Context, c *auth.Claims, docID uuid
 	if !c.IsStaff() {
 		return nil, ErrForbidden
 	}
+	return s.reviewIn(ctx, c, c.OrgID, docID, accept, note)
+}
+
+// reviewIn records a person's decision on a document of organisation orgID.
+// The reviewer may belong to another organisation (ApplyUni staff).
+func (s *Service) reviewIn(ctx context.Context, c *auth.Claims, orgID, docID uuid.UUID, accept bool, note string) (*Document, error) {
 	var doc *Document
-	err := s.DB.Tenant(ctx, c.OrgID, func(tx db.Conn) error {
-		d, err := getDoc(ctx, tx, c.OrgID, docID)
+	err := s.DB.Tenant(ctx, orgID, func(tx db.Conn) error {
+		d, err := getDoc(ctx, tx, orgID, docID)
 		if err != nil {
 			return err
 		}
@@ -239,19 +245,19 @@ func (s *Service) ReviewDocument(ctx context.Context, c *auth.Claims, docID uuid
 		} else if accept {
 			v.Issues = []string{}
 		}
-		if _, err := tx.Exec(ctx, `UPDATE documents SET status = ?, verdict = ? WHERE org_id = ? AND id = ?`, status, v.json(), c.OrgID, docID); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE documents SET status = ?, verdict = ? WHERE org_id = ? AND id = ?`, status, v.json(), orgID, docID); err != nil {
 			return err
 		}
-		if err := audit(ctx, tx, c, "document.review."+status, docID.String()); err != nil {
+		if err := auditIn(ctx, tx, orgID, c, "document.review."+status, docID.String()); err != nil {
 			return err
 		}
-		if err := s.crossCheck(ctx, tx, c.OrgID, d.StudentID); err != nil {
+		if err := s.crossCheck(ctx, tx, orgID, d.StudentID); err != nil {
 			return err
 		}
-		if err := s.refreshApplications(ctx, tx, c.OrgID, d.StudentID); err != nil {
+		if err := s.refreshApplications(ctx, tx, orgID, d.StudentID); err != nil {
 			return err
 		}
-		doc, err = getDoc(ctx, tx, c.OrgID, docID)
+		doc, err = getDoc(ctx, tx, orgID, docID)
 		return err
 	})
 	return doc, err

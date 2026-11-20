@@ -224,6 +224,19 @@ export const DICT = {
   'Female': ['Ayol', 'Женский'],
   'Citizenship': ['Fuqarolik', 'Гражданство'],
 
+  // ---- ApplyUni staff ----
+  'ApplyUni staff': ['ApplyUni xodimlari', 'Сотрудники ApplyUni'],
+  'Document review': ['Hujjatlarni tekshirish', 'Проверка документов'],
+  "Check that each file is the right document, readable, valid and in the student's name.": ["Har bir fayl to'g'ri hujjat, o'qiladigan, amal qiladigan va talaba nomida ekanini tekshiring.", 'Проверьте, что каждый файл — нужный документ, читается, действителен и оформлен на имя студента.'],
+  'Refresh': ['Yangilash', 'Обновить'],
+  'Nothing to review.': ["Tekshiradigan hech narsa yo'q.", 'Проверять нечего.'],
+  'Open {file}': ['{file} ni ochish', 'Открыть {file}'],
+  'Reason, if rejecting (the student sees this)': ["Rad etish sababi (talaba buni ko'radi)", 'Причина отказа (её увидит студент)'],
+  'Accept': ['Qabul qilish', 'Принять'],
+  'Reject': ['Rad etish', 'Отклонить'],
+  'Write the reason for rejecting, so the student knows what to fix.': ["Talaba nimani tuzatishni bilishi uchun rad etish sababini yozing.", 'Напишите причину отказа, чтобы студент знал, что исправить.'],
+  'Open document review (ApplyUni staff)': ['Hujjatlarni tekshirishni ochish (ApplyUni xodimlari)', 'Открыть проверку документов (сотрудники ApplyUni)'],
+
   // ---- applications ----
   'Apply': ['Topshirish', 'Подать заявку'],
   'Sign up to apply': ["Topshirish uchun ro'yxatdan o'ting", 'Зарегистрируйтесь, чтобы подать заявку'],

@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -186,8 +187,9 @@ func TestCoreFlow(t *testing.T) {
 		t.Fatalf("expected 2 jobs (account, submission), ran %d", n)
 	}
 	d, _ = s.GetApplication(ctx, c, app.ID)
-	if d.Status != "submitted" || d.PortalRef == nil {
-		t.Fatalf("expected submitted, got %s", d.Status)
+	// The development simulator never claims a submission.
+	if d.Status != "needs_attention" || d.PortalRef != nil || d.StatusNote == nil || !strings.Contains(*d.StatusNote, "nothing was sent") {
+		t.Fatalf("expected an honest simulation, got %s %v", d.Status, d.StatusNote)
 	}
 
 	// --- B2B agency: seats, staff review, and isolation from the B2C tenant.

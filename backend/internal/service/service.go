@@ -54,7 +54,10 @@ type Service struct {
 	MailDomain string
 	// InboundSecret: shared secret the mail provider sends with each email.
 	InboundSecret string
-	Log           *slog.Logger
+	// PlatformAdmins are ApplyUni staff usernames (lower case) who may review
+	// any applicant's documents.
+	PlatformAdmins map[string]bool
+	Log            *slog.Logger
 }
 
 func now() time.Time { return time.Now().UTC() }
@@ -203,6 +206,7 @@ type Me struct {
 	SeatLimit int        `json:"seat_limit"`
 	SeatsUsed int        `json:"seats_used"`
 	StudentID *uuid.UUID `json:"student_id,omitempty"`
+	IsAdmin   bool       `json:"is_admin,omitempty"` // ApplyUni staff (PLATFORM_ADMINS)
 }
 
 func (s *Service) Me(ctx context.Context, c *auth.Claims) (*Me, error) {

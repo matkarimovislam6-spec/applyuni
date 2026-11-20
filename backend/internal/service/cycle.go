@@ -160,6 +160,14 @@ func (s *Service) createPortalAccount(ctx context.Context, j job) error {
 	}
 	res, runErr := creator.CreateAccount(ctx, b)
 	return s.DB.Tenant(ctx, j.orgID, func(tx db.Conn) error {
+		if runErr == nil && res != nil && res.Simulated {
+			// Nothing exists on the portal: don't record an active account,
+			// or a later real run would skip registering the student.
+			if err := event(ctx, tx, j.orgID, appID, "simulated", res.Note); err != nil {
+				return err
+			}
+			return enqueue(ctx, tx, j.orgID, "submit_application", map[string]string{"application_id": appID.String()})
+		}
 		if runErr != nil {
 			if _, err := tx.Exec(ctx, `UPDATE portal_accounts SET status = 'failed', last_error = ? WHERE org_id = ? AND student_id = ? AND portal = ?`,
 				explain(runErr), j.orgID, a.StudentID, b.Portal); err != nil {

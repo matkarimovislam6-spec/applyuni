@@ -81,6 +81,9 @@ func New(svc *service.Service, tokens *auth.Issuer, corsOrigin string, maxUpload
 			r.Post("/documents/{id}/review", a.reviewDocument)
 			r.Get("/review/documents", a.reviewQueue)
 			r.Delete("/documents/{id}", a.deleteDocument)
+			r.Get("/admin/review/documents", a.adminReviewQueue)
+			r.Get("/admin/documents/{id}/file", a.adminDocumentFile)
+			r.Post("/admin/documents/{id}/review", a.adminReviewDocument)
 		})
 	})
 	return r
@@ -215,7 +218,65 @@ func (a *API) me(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
+	m.IsAdmin = a.svc.IsPlatformAdmin(r.Context(), claims(r))
 	writeJSON(w, http.StatusOK, m)
+}
+
+// ---------- ApplyUni staff ----------
+
+func (a *API) adminReviewQueue(w http.ResponseWriter, r *http.Request) {
+	items, err := a.svc.AdminReviewQueue(r.Context(), claims(r))
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, items)
+}
+
+// adminDocumentFile shows the file inline for review. Uploads are only PDF,
+// JPEG or PNG (checked from the bytes at upload) and every response carries
+// nosniff, so a file can't be run as a page on our origin. (A CSP sandbox
+// header would be stricter, but Chrome then refuses to display PDFs.)
+func (a *API) adminDocumentFile(w http.ResponseWriter, r *http.Request) {
+	id, err := idParam(r)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	doc, data, err := a.svc.AdminDocumentFile(r.Context(), claims(r), id)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", doc.ContentType)
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("inline", map[string]string{"filename": doc.Filename}))
+	w.Write(data)
+}
+
+func (a *API) adminReviewDocument(w http.ResponseWriter, r *http.Request) {
+	id, err := idParam(r)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	var in struct {
+		Accept bool   `json:"accept"`
+		Note   string `json:"note"`
+	}
+	if err := decode(r, &in); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	if !in.Accept && strings.TrimSpace(in.Note) == "" {
+		a.fail(w, r, fmt.Errorf("%w: tell the student why the document is rejected", service.ErrInvalid))
+		return
+	}
+	d, err := a.svc.AdminReviewDocument(r.Context(), claims(r), id, in.Accept, strings.TrimSpace(in.Note))
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, d)
 }
 
 func (a *API) matches(w http.ResponseWriter, r *http.Request) {

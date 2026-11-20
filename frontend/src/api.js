@@ -46,6 +46,11 @@ export const api = {
   saveProfile: (id, profile) => request('PUT', `/students/${id}/profile`, profile),
   matchProgram: (programId) => request('GET', `/me/matches/${programId}`),
 
+  // ApplyUni staff: review documents of every applicant
+  adminReviewQueue: () => request('GET', '/admin/review/documents'),
+  adminReview: (docId, accept, note = '') => request('POST', `/admin/documents/${docId}/review`, { accept, note }),
+  adminFileUrl: (docId) => `/api/admin/documents/${docId}/file`,
+
   // applications: documents → approval → we submit
   applications: (studentId) => request('GET', `/students/${studentId}/applications`),
   createApplication: (studentId, programId) => request('POST', `/students/${studentId}/applications`, { program_id: programId }),

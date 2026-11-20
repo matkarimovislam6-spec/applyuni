@@ -108,6 +108,7 @@ export default function Account() {
         <button className="btn" onClick={async () => { await logout(); nav('/'); }}>{t('Log out')}</button>
       </div>
 
+      {user.is_admin && <div className="notice small"><Link to="/admin/review">{t('Open document review (ApplyUni staff)')}</Link></div>}
       {user.student_id && <MyApplications studentId={user.student_id} />}
 
       {!form ? <p className="muted">{t('Loading your details…')}</p> : (

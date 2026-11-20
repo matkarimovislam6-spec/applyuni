@@ -9,7 +9,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 )
 
 type Document struct {
@@ -45,6 +44,8 @@ type Result struct {
 	Submitted bool              // the final submit click happened
 	Values    map[string]string // values read from the portal (Read steps)
 	Receipt   []byte            // PNG screenshot of the final page
+	// Simulated: nothing happened on the real portal (development simulator).
+	Simulated bool
 }
 
 type Adapter interface {
@@ -85,17 +86,19 @@ func (r *Registry) Get(portalID string) (Adapter, error) {
 }
 
 func (DryRun) CreateAccount(_ context.Context, b *Bundle) (*Result, error) {
-	return &Result{Note: fmt.Sprintf("Dry run: account %s would be created on %s.", b.Fields["portal.username"], b.Portal)}, nil
+	return &Result{Simulated: true, Note: fmt.Sprintf("Simulation only: no account was created on the %s portal.", b.University)}, nil
 }
 
-// DryRun simulates a successful submission so the whole flow can be tested
-// end to end in development. Never enable PORTAL_DRY_RUN in production.
+// DryRun stands in for portals without an adapter in development
+// (PORTAL_DRY_RUN=true), so the whole cycle can be exercised. It never claims
+// a submission: the application stops at needs_attention with a note saying
+// nothing was sent. Never enable PORTAL_DRY_RUN in production.
 type DryRun struct{}
 
 func (DryRun) Submit(_ context.Context, b *Bundle) (*Result, error) {
 	return &Result{
-		Submitted: true,
-		PortalRef: fmt.Sprintf("DRYRUN-%s-%d", b.Portal, time.Now().Unix()),
-		Note:      fmt.Sprintf("Dry run: %d documents would be uploaded to %s.", len(b.Documents), b.Portal),
+		Simulated: true,
+		Note: fmt.Sprintf("Simulation only: nothing was sent to %s. The approved package (%d documents) is ready; automated submission to this portal isn't available yet.",
+			b.University, len(b.Documents)),
 	}, nil
 }

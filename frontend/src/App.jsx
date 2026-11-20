@@ -8,6 +8,7 @@ import MadeIn from './MadeIn.jsx';
 import Auth from './pages/Auth.jsx';
 import Account from './pages/Account.jsx';
 import Application from './pages/Application.jsx';
+import AdminReview from './pages/AdminReview.jsx';
 import { AuthProvider, useAuth } from './auth.jsx';
 import { LangProvider, useT } from './i18n.jsx';
 import LangSwitch from './LangSwitch.jsx';
@@ -86,6 +87,7 @@ function Shell() {
         <Route path="/login" element={<Auth mode="login" />} />
         <Route path="/account" element={<Account />} />
         <Route path="/applications/:id" element={<Application />} />
+        <Route path="/admin/review" element={<AdminReview />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
       <footer className="footer">
