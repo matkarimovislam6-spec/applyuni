@@ -43,4 +43,5 @@ export function RuFlag({ width = 27, height = 14 }) {
   );
 }
 
+
 export const FLAG = { en: UsFlag, uz: UzFlag, ru: RuFlag };

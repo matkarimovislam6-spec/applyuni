@@ -5,6 +5,7 @@ import Ascii from '../Ascii.jsx';
 import Waitlist from '../Waitlist.jsx';
 import { useT } from '../i18n.jsx';
 import { COUNTRY } from './Programs.jsx';
+import CountryMap from '../CountryMap.jsx';
 
 // The headline word and the drawings around it change together, by country.
 const PLACE_COUNTRIES = ['IT', 'DE', 'US', 'IT', 'DE', 'US'];
@@ -185,37 +186,39 @@ export default function Landing() {
 function HeroDemo({ programs }) {
   const { t } = useT();
   const [step, setStep] = useState(1);
+  const [country, setCountry] = useState('');
   const [programId, setProgramId] = useState('');
   const [profile, setProfile] = useState({ school_years: 11, wants_scholarship: true, documents_language: 'uz', english_test: '' });
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    if (!programId && programs.length) {
-      // start on a programme you can apply to right now
-      const live = (x) => ['open', 'due'].includes(x.deadline_status?.state);
-      setProgramId((programs.find((x) => live(x) && x.degree === 'bachelor') || programs.find(live) || programs[0]).id);
-    }
-  }, [programs, programId]);
+  // Picking a country preselects a programme there you can apply to right now.
+  const pickCountry = (c) => {
+    setCountry(c);
+    const here = programs.filter((p) => p.country === c);
+    const live = (x) => ['open', 'due'].includes(x.deadline_status?.state);
+    setProgramId((here.find((x) => live(x) && x.degree === 'bachelor') || here.find(live) || here[0])?.id || '');
+    setStep(2);
+  };
 
   const program = programs.find((p) => p.id === programId);
   const build = async () => {
     setError('');
     try {
       setResult(await api.checklist(programId, profile));
-      setStep(3);
+      setStep(4);
     } catch (e) {
       setError(e.message);
     }
   };
-  const reset = () => { setStep(1); setResult(null); };
+  const reset = () => { setStep(1); setCountry(''); setResult(null); };
   const degree = (d) => t(d === 'bachelor' ? 'Bachelor' : 'Master').toLowerCase();
 
   return (
     <div className="demo">
       <div className="demo-bar">
         <span className="dots"><i /><i /><i /></span>
-        {['Choose', 'Answer', 'Your list'].map((label, n) => (
+        {['Country', 'Programme', 'Answer', 'Your list'].map((label, n) => (
           <span key={label} className={`demo-tab ${step === n + 1 ? 'on' : ''}`}>{n + 1} · {t(label)}</span>
         ))}
         <button className="link small push" onClick={reset}>{t('Start over')}</button>
@@ -224,22 +227,38 @@ function HeroDemo({ programs }) {
         {error && <div className="error">{error}</div>}
         {step === 1 && (
           <>
-            <h3>{t('Where would you like to study?')}</h3>
-            <select className="big-input" value={programId} onChange={(e) => setProgramId(e.target.value)}>
-              {['IT', 'DE', 'US'].map((c) => (
-                <optgroup key={c} label={t(COUNTRY[c])}>
-                  {programs.filter((p) => p.country === c).map((p) => <option key={p.id} value={p.id}>{p.name} — {p.university} ({degree(p.degree)})</option>)}
-                </optgroup>
-              ))}
-            </select>
+            <h3>{t('Which country do you want to study in?')}</h3>
+            <div className="country-pick">
+              {['IT', 'DE', 'US'].map((c) => {
+                const here = programs.filter((p) => p.country === c);
+                return (
+                  <button key={c} className="country-tile" onClick={() => pickCountry(c)} disabled={!here.length}>
+                    <span className="country-disc"><CountryMap code={c} /></span>
+                    <span className="country-name">{t(COUNTRY[c])}</span>
+                    <span className="country-count">{t('{n} programmes', { n: here.length })}</span>
+                  </button>
+                );
+              })}
+            </div>
             <div className="demo-actions">
-              <span className="hint">{t('click here →')}</span>
-              <button className="btn primary" disabled={!programId} onClick={() => setStep(2)}>{t('Next')}</button>
-              <span className="muted small">{t('No account. Nothing is saved.')}</span>
+                            <span className="muted small">{t('No account. Nothing is saved.')}</span>
             </div>
           </>
         )}
         {step === 2 && (
+          <>
+            <h3>{t('Which programme?')}</h3>
+            <select className="big-input" value={programId} onChange={(e) => setProgramId(e.target.value)}>
+              {programs.filter((p) => p.country === country).map((p) => <option key={p.id} value={p.id}>{p.name} — {p.university} ({degree(p.degree)})</option>)}
+            </select>
+            <div className="demo-actions">
+              <button className="link small" onClick={() => setStep(1)}>{t('← Country')}</button>
+              <span className="hint">{t('click here →')}</span>
+              <button className="btn primary" disabled={!programId} onClick={() => setStep(3)}>{t('Next')}</button>
+            </div>
+          </>
+        )}
+        {step === 3 && (
           <>
             <h3>{t('Two quick questions')}</h3>
             {program?.degree === 'bachelor' && (
@@ -277,7 +296,7 @@ function HeroDemo({ programs }) {
             </div>
           </>
         )}
-        {step === 3 && result && (
+        {step === 4 && result && (
           <>
             <h3>
               {t('You need')} <span className="marker">{t('{n} documents', { n: result.checklist.items.length })}</span> {t('for {university}', { university: result.university })}
