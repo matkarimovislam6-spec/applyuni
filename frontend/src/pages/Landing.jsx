@@ -69,7 +69,6 @@ export default function Landing() {
       <section className="hero">
         <CountryArt country={country} />
         <div className="container hero-inner">
-          <p className="mono-label">{t('Italy')} · {t('Germany')} · {t('USA')} · {t('bachelor & master')}</p>
           <h1 className="display">
             {h.before && <>{h.before} </>}<RotatingWord word={word} />{h.after && <> {h.after}</>}
             <br />

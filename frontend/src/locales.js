@@ -42,7 +42,6 @@ export const DICT = {
   'saved': ['saqlandi', 'сохранено'],
 
   // ---- landing ----
-  'bachelor & master': ['bakalavr va magistratura', 'бакалавриат и магистратура'],
   'Agencies charge students': ['Agentliklar talabalardan', 'Агентства берут со студентов'],
   'thousands of dollars': ['minglab dollar', 'тысячи долларов'],
   'for paperwork you can do yourself.': ["oladi — o'zingiz bajara oladigan hujjat ishlari uchun.", 'за бумажную работу, которую можно сделать самому.'],
