@@ -6,6 +6,7 @@ import Waitlist from '../Waitlist.jsx';
 import { useT } from '../i18n.jsx';
 import { COUNTRY } from './Programs.jsx';
 import CountryMap from '../CountryMap.jsx';
+import LogoMarquee from '../LogoMarquee.jsx';
 
 // The headline word and the drawings around it change together, by country.
 const PLACE_COUNTRIES = ['IT', 'DE', 'US', 'IT', 'DE', 'US'];
@@ -58,11 +59,6 @@ export default function Landing() {
   useEffect(() => {
     api.programs('').then(setCatalogue).catch(() => setCatalogue([]));
   }, []);
-  // universities per country, straight from the catalogue
-  const byCountry = ['IT', 'DE', 'US'].map((code) => [
-    t(COUNTRY[code]),
-    [...new Set(catalogue.filter((p) => p.country === code).map((p) => p.university))].sort(),
-  ]);
   const h = HEADLINE[lang] || HEADLINE.en;
   const word = h.places[i];
   const country = PLACE_COUNTRIES[i];
@@ -90,15 +86,8 @@ export default function Landing() {
       <section className="band">
         <div className="container band-inner">
           <span className="mono-label">{unis ? t('{u} universities · {p} programmes in the catalogue', { u: unis, p: catalogue.length }) : ''}</span>
-          <div className="logo-groups">
-            {byCountry.filter(([, us]) => us.length).map(([c, us]) => (
-              <div key={c} className="logo-group">
-                <span className="mono-label">{c}</span>
-                <div className="logos">{us.map((u) => <span key={u}>{u}</span>)}</div>
-              </div>
-            ))}
-          </div>
         </div>
+        <LogoMarquee />
       </section>
 
       <section id="how" className="container section">

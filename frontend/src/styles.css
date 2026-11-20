@@ -430,9 +430,6 @@ input[aria-invalid='true'] { border-color: var(--bad); }
 }
 
 /* multi-country */
-.logo-groups { display: flex; gap: 34px; flex-wrap: wrap; }
-.logo-group { display: flex; flex-direction: column; gap: 6px; }
-.logo-group .logos { gap: 18px; }
 .country-chips { margin-bottom: 2px; }
 .dl-badge.due { background: var(--ok-bg); color: var(--ok); border-color: transparent; }
 .dl-badge.due.urgent { background: var(--clay); color: var(--clay-ink); }
@@ -500,3 +497,33 @@ input[aria-invalid='true'] { border-color: var(--bad); }
 }
 .step-by.us { background: var(--ok-bg); color: var(--ok); }
 .step-by.you { background: var(--warn-bg); color: var(--warn); }
+
+/* University logo strip */
+.band { padding-bottom: 26px; }
+.band-inner { padding-bottom: 14px; }
+.marquee {
+  overflow: hidden; width: 100%;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+}
+.marquee-track { display: flex; align-items: center; gap: 64px; width: max-content; padding-right: 64px; animation: marquee 60s linear infinite; }
+.marquee:hover .marquee-track { animation-play-state: paused; }
+@keyframes marquee { to { transform: translateX(-50%); } }
+.uni-logo {
+  height: 34px; width: auto; max-width: 190px; flex: none; user-select: none;
+  filter: brightness(0) opacity(0.42); transition: filter .2s;
+}
+.uni-logo:hover { filter: brightness(0) opacity(0.75); }
+/* square / tall marks need a bit less height to look the same size */
+.uni-logo.l-tum { height: 28px; }
+.uni-logo.l-polimi, .uni-logo.l-polito, .uni-logo.l-unitn { height: 42px; }
+:root[data-theme="dark"] .uni-logo { filter: brightness(0) invert(1) opacity(0.42); }
+:root[data-theme="dark"] .uni-logo:hover { filter: brightness(0) invert(1) opacity(0.8); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .uni-logo { filter: brightness(0) invert(1) opacity(0.42); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track { animation: none; flex-wrap: wrap; width: auto; justify-content: center; row-gap: 24px; }
+  .marquee-track > :nth-child(n + 15) { display: none; }
+}
+@media (max-width: 560px) { .uni-logo { height: 26px; } .marquee-track { gap: 40px; padding-right: 40px; } }
