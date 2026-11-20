@@ -20,6 +20,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/matkarimovislam6-spec/applyuni/backend/internal/auth"
+	"github.com/matkarimovislam6-spec/applyuni/backend/internal/i18n"
 	"github.com/matkarimovislam6-spec/applyuni/backend/internal/requirements"
 	"github.com/matkarimovislam6-spec/applyuni/backend/internal/service"
 )
@@ -118,7 +119,7 @@ func (a *API) fail(w http.ResponseWriter, r *http.Request, err error) {
 	default:
 		a.log.Error("request failed", "path", r.URL.Path, "err", err)
 	}
-	writeJSON(w, status, map[string]string{"error": msg})
+	writeJSON(w, status, map[string]string{"error": i18n.T(i18n.FromRequest(r), msg)})
 }
 
 func decode(r *http.Request, v any) error {
@@ -183,7 +184,7 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 	}
 	user := strings.ToLower(strings.TrimSpace(in.Username))
 	if !a.loginsByUser.allowed(user) || !a.loginsByIP.allowed(ip) {
-		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "too many failed attempts, try again in 15 minutes"})
+		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": i18n.T(i18n.FromRequest(r), "too many failed attempts, try again in 15 minutes")})
 		return
 	}
 	s, err := a.svc.Login(r.Context(), in.Username, in.Password)
@@ -220,6 +221,9 @@ func (a *API) matches(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
+	for i := range m {
+		localizeMatch(i18n.FromRequest(r), &m[i])
+	}
 	writeJSON(w, http.StatusOK, m)
 }
 
@@ -228,6 +232,7 @@ func (a *API) matchProgram(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		var m *service.Match
 		if m, err = a.svc.MatchProgram(r.Context(), claims(r), id); err == nil {
+			localizeMatch(i18n.FromRequest(r), m)
 			writeJSON(w, http.StatusOK, m)
 			return
 		}
@@ -240,6 +245,9 @@ func (a *API) listPrograms(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		a.fail(w, r, err)
 		return
+	}
+	for _, x := range p {
+		localizeProgram(i18n.FromRequest(r), x)
 	}
 	writeJSON(w, http.StatusOK, p)
 }
@@ -260,6 +268,8 @@ func (a *API) publicChecklist(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
+	localizeProgram(i18n.FromRequest(r), p.ProgramInfo)
+	localizeChecklist(i18n.FromRequest(r), p.Checklist)
 	writeJSON(w, http.StatusOK, p)
 }
 
@@ -349,6 +359,9 @@ func (a *API) listApplications(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		var apps []*service.Application
 		if apps, err = a.svc.ListApplications(r.Context(), claims(r), id); err == nil {
+			for _, x := range apps {
+				localizeApplication(i18n.FromRequest(r), x)
+			}
 			writeJSON(w, http.StatusOK, apps)
 			return
 		}
@@ -374,6 +387,7 @@ func (a *API) createApplication(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
+	localizeApplication(i18n.FromRequest(r), app)
 	writeJSON(w, http.StatusCreated, app)
 }
 
@@ -382,6 +396,8 @@ func (a *API) getApplication(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		var d *service.ApplicationDetail
 		if d, err = a.svc.GetApplication(r.Context(), claims(r), id); err == nil {
+			localizeApplication(i18n.FromRequest(r), d.Application)
+			localizeChecklist(i18n.FromRequest(r), d.Checklist)
 			writeJSON(w, http.StatusOK, d)
 			return
 		}
@@ -411,6 +427,8 @@ func (a *API) approve(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
+	localizeApplication(i18n.FromRequest(r), d.Application)
+	localizeChecklist(i18n.FromRequest(r), d.Checklist)
 	writeJSON(w, http.StatusOK, d)
 }
 

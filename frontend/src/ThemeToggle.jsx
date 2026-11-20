@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useT } from './i18n.jsx';
 
 const KEY = 'applyuni_theme';
 const systemDark = () => window.matchMedia?.('(prefers-color-scheme: dark)').matches;
@@ -13,6 +14,7 @@ function readSaved() {
 }
 
 export default function ThemeToggle() {
+  const { t } = useT();
   const [mode, setMode] = useState(() => readSaved() || (systemDark() ? 'dark' : 'light'));
 
   // Follow system changes until the visitor picks a theme themselves.
@@ -37,8 +39,8 @@ export default function ThemeToggle() {
       className="theme-toggle"
       data-mode={mode}
       onClick={toggle}
-      aria-label={mode === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-      title={mode === 'dark' ? 'Light theme' : 'Dark theme'}
+      aria-label={mode === 'dark' ? t('Switch to light theme') : t('Switch to dark theme')}
+      title={mode === 'dark' ? t('Light theme') : t('Dark theme')}
     >
       <svg className="sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
         <circle cx="12" cy="12" r="4.2" fill="currentColor" />

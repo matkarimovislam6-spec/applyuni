@@ -3,8 +3,13 @@ import { Link } from 'react-router-dom';
 import { api } from '../api.js';
 import Ascii from '../Ascii.jsx';
 import { DeadlineBadge } from '../Deadline.jsx';
+import { useT } from '../i18n.jsx';
+
+export const COUNTRY = { IT: 'Italy', DE: 'Germany', US: 'USA' };
+export const LANGUAGE = { en: 'English', it: 'Italian', de: 'German' };
 
 export default function Programs() {
+  const { t } = useT();
   const [programs, setPrograms] = useState(null);
   const [degree, setDegree] = useState('');
   const [country, setCountry] = useState('');
@@ -34,44 +39,44 @@ export default function Programs() {
       <section className="page-head">
         <Ascii art="duomo" className="float a2" />
         <div className="container">
-          <p className="mono-label">Catalogue · Italy · Germany · USA</p>
-          <h1 className="display-sm">Find your <em>programme</em></h1>
-          <p className="lead">Pick one to see every document you need for it — tailored to you, in under a minute.</p>
+          <p className="mono-label">{t('Catalogue')} · {t('Italy')} · {t('Germany')} · {t('USA')}</p>
+          <h1 className="display-sm">{t('Find your')} <em>{t('programme')}</em></h1>
+          <p className="lead">{t('Pick one to see every document you need for it, tailored to you, in under a minute.')}</p>
         </div>
       </section>
       <div className="container stack">
         <div className="chips country-chips">
           {[['', 'All countries'], ['IT', 'Italy'], ['DE', 'Germany'], ['US', 'USA']].map(([v, l]) => (
-            <button key={l} className={`chip ${country === v ? 'on' : ''}`} onClick={() => setCountry(v)} aria-pressed={country === v}>{l}</button>
+            <button key={l} className={`chip ${country === v ? 'on' : ''}`} onClick={() => setCountry(v)} aria-pressed={country === v}>{t(l)}</button>
           ))}
         </div>
         <div className="filters">
-          <input className="grow" placeholder="Search programme, university or city…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input className="grow" placeholder={t('Search programme, university or city…')} value={q} onChange={(e) => setQ(e.target.value)} />
           <div className="chips">
             {[['', 'All'], ['bachelor', 'Bachelor'], ['master', 'Master']].map(([v, l]) => (
-              <button key={l} className={`chip ${degree === v ? 'on' : ''}`} onClick={() => setDegree(v)}>{l}</button>
+              <button key={l} className={`chip ${degree === v ? 'on' : ''}`} onClick={() => setDegree(v)}>{t(l)}</button>
             ))}
-            <button className={`chip ${openOnly ? 'on' : ''}`} onClick={() => setOpenOnly(!openOnly)} aria-pressed={openOnly}>Open now</button>
+            <button className={`chip ${openOnly ? 'on' : ''}`} onClick={() => setOpenOnly(!openOnly)} aria-pressed={openOnly}>{t('Open now')}</button>
           </div>
         </div>
         {error && <div className="error">{error}</div>}
-        {!programs && !error && <p className="muted">Loading…</p>}
+        {!programs && !error && <p className="muted">{t('Loading…')}</p>}
         <div className="program-list">
           {shown.map((p) => (
             <Link key={p.id} to={`/programs/${p.id}`} className="program">
               <div>
                 <span className="program-name">{p.name}</span>
-                <span className="program-meta">{p.university} · {p.city}, {{ IT: 'Italy', DE: 'Germany', US: 'USA' }[p.country]}</span>
+                <span className="program-meta">{p.university} · {p.city}, {t(COUNTRY[p.country])}</span>
               </div>
               <div className="program-tags">
                 <DeadlineBadge status={p.deadline_status} />
-                <span className="tag">{p.degree}</span>
-                <span className="tag hide-sm">{p.language === 'en' ? 'English' : 'Italian'}</span>
+                <span className="tag">{t(p.degree === 'bachelor' ? 'Bachelor' : 'Master')}</span>
+                <span className="tag hide-sm">{t(LANGUAGE[p.language] || 'English')}</span>
                 <span className="arrow" aria-hidden="true">→</span>
               </div>
             </Link>
           ))}
-          {programs && shown.length === 0 && <p className="muted">{openOnly ? 'No programme is open for applications right now.' : 'No programmes match your search.'}</p>}
+          {programs && shown.length === 0 && <p className="muted">{openOnly ? t('No programme is open for applications right now.') : t('No programmes match your search.')}</p>}
         </div>
       </div>
     </main>

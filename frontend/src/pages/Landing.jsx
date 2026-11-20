@@ -3,12 +3,19 @@ import { Link } from 'react-router-dom';
 import { api } from '../api.js';
 import Ascii from '../Ascii.jsx';
 import Waitlist from '../Waitlist.jsx';
+import { useT } from '../i18n.jsx';
+import { COUNTRY } from './Programs.jsx';
 
 // The headline word and the drawings around it change together, by country.
-const PLACES = [
-  ['Milan', 'IT'], ['Munich', 'DE'], ['the USA', 'US'],
-  ['Rome', 'IT'], ['Aachen', 'DE'], ['Illinois', 'US'],
-];
+const PLACE_COUNTRIES = ['IT', 'DE', 'US', 'IT', 'DE', 'US'];
+
+// Each language has its own headline grammar: Uzbek adds the locative "-da",
+// Russian uses the prepositional case after "в".
+const HEADLINE = {
+  en: { places: ['Milan', 'Munich', 'the USA', 'Rome', 'Aachen', 'Illinois'], before: 'Study in', after: '', marker: 'without paying', rest: ' an agency.' },
+  uz: { places: ['Milanda', 'Myunxenda', 'AQShda', 'Rimda', 'Axenda', 'Illinoysda'], before: '', after: "o'qing", marker: "agentlikka pul to'lamasdan", rest: '.' },
+  ru: { places: ['Милане', 'Мюнхене', 'США', 'Риме', 'Ахене', 'Иллинойсе'], before: 'Учитесь в', after: '', marker: 'без переплаты', rest: ' агентству.' },
+};
 
 // Four drawings per country, one per corner slot (a1 top-left … a4 right).
 const ART_SETS = {
@@ -21,8 +28,8 @@ function useRotation(length, interval = 2600) {
   const [i, setI] = useState(0);
   useEffect(() => {
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
-    const t = setInterval(() => setI((n) => (n + 1) % length), interval);
-    return () => clearInterval(t);
+    const id = setInterval(() => setI((n) => (n + 1) % length), interval);
+    return () => clearInterval(id);
   }, [length, interval]);
   return i;
 }
@@ -44,31 +51,36 @@ function CountryArt({ country }) {
 }
 
 export default function Landing() {
-  const i = useRotation(PLACES.length);
+  const { t, lang } = useT();
+  const i = useRotation(PLACE_COUNTRIES.length);
   const [catalogue, setCatalogue] = useState([]);
   useEffect(() => {
     api.programs('').then(setCatalogue).catch(() => setCatalogue([]));
   }, []);
   // universities per country, straight from the catalogue
-  const byCountry = [['IT', 'Italy'], ['DE', 'Germany'], ['US', 'USA']].map(([code, label]) => [
-    label,
+  const byCountry = ['IT', 'DE', 'US'].map((code) => [
+    t(COUNTRY[code]),
     [...new Set(catalogue.filter((p) => p.country === code).map((p) => p.university))].sort(),
   ]);
-  const [word, country] = PLACES[i];
+  const h = HEADLINE[lang] || HEADLINE.en;
+  const word = h.places[i];
+  const country = PLACE_COUNTRIES[i];
+  const unis = new Set(catalogue.map((p) => p.university)).size;
+
   return (
     <main>
       <section className="hero">
         <CountryArt country={country} />
         <div className="container hero-inner">
-          <p className="mono-label">Italy · Germany · USA · bachelor & master</p>
+          <p className="mono-label">{t('Italy')} · {t('Germany')} · {t('USA')} · {t('bachelor & master')}</p>
           <h1 className="display">
-            Study in <RotatingWord word={word} />
+            {h.before && <>{h.before} </>}<RotatingWord word={word} />{h.after && <> {h.after}</>}
             <br />
-            <span className="marker">without paying</span> an agency.
+            <span className="marker">{h.marker}</span>{h.rest}
           </h1>
           <p className="lead">
-            Agencies charge students <em>thousands of dollars</em> for paperwork you can do yourself.
-            Whether it's Italy, Germany or the USA, we tell you every document you need, check them with AI, and submit after you approve.
+            {t('Agencies charge students')} <em>{t('thousands of dollars')}</em> {t('for paperwork you can do yourself.')}{' '}
+            {t("Whether it's Italy, Germany or the USA, we tell you every document you need, check them with AI, and submit after you approve.")}
           </p>
           <HeroDemo programs={catalogue} />
         </div>
@@ -76,7 +88,7 @@ export default function Landing() {
 
       <section className="band">
         <div className="container band-inner">
-          <span className="mono-label">{new Set(catalogue.map((p) => p.university)).size || ''} universities · {catalogue.length || ''} programmes in the catalogue</span>
+          <span className="mono-label">{unis ? t('{u} universities · {p} programmes in the catalogue', { u: unis, p: catalogue.length }) : ''}</span>
           <div className="logo-groups">
             {byCountry.filter(([, us]) => us.length).map(([c, us]) => (
               <div key={c} className="logo-group">
@@ -89,18 +101,18 @@ export default function Landing() {
       </section>
 
       <section id="how" className="container section">
-        <p className="mono-label">How it works</p>
-        <h2 className="display-sm">Three steps. <em>You</em> stay in charge.</h2>
+        <p className="mono-label">{t('How it works')}</p>
+        <h2 className="display-sm">{t('Three steps.')} <em>{t('You')}</em> {t('stay in charge.')}</h2>
         <div className="steps-grid">
           {[
             ['01', 'Choose', 'Pick the programmes you want. We show what each one actually asks for, with links to the official call.'],
             ['02', 'Collect', 'Upload your documents. AI checks every file: right document, readable, not expired, apostille where needed.'],
-            ['03', 'Approve', 'When everything is green you review once and approve. We submit, and you never press a button you didn\'t mean to.'],
-          ].map(([n, t, d]) => (
+            ['03', 'Approve', "When everything is green you review once and approve. We submit, and you never press a button you didn't mean to."],
+          ].map(([n, title, d]) => (
             <article key={n} className="step">
               <span className="step-n">{n}</span>
-              <h3>{t}</h3>
-              <p>{d}</p>
+              <h3>{t(title)}</h3>
+              <p>{t(d)}</p>
             </article>
           ))}
         </div>
@@ -109,19 +121,21 @@ export default function Landing() {
       <section className="container section">
         <div className="compare">
           <div className="compare-head">
-            <p className="mono-label">The honest comparison</p>
-            <h2 className="display-sm">Same applications.<br /><em>Not</em> the same bill.</h2>
+            <p className="mono-label">{t('The honest comparison')}</p>
+            <h2 className="display-sm">{t('Same applications.')}<br /><em>{t('Not')}</em> {t('the same bill.')}</h2>
           </div>
           <table>
             <thead>
-              <tr><th></th><th>Typical agency</th><th className="us">ApplyUni</th></tr>
+              <tr><th></th><th>{t('Typical agency')}</th><th className="us">ApplyUni</th></tr>
             </thead>
             <tbody>
-              <tr><td>Price</td><td>Thousands of dollars</td><td className="us">Free checklist · low monthly plan</td></tr>
-              <tr><td>Document list</td><td>Generic, by message</td><td className="us">Exact, per programme and per student</td></tr>
-              <tr><td>Document check</td><td>When a person has time</td><td className="us">AI, within minutes</td></tr>
-              <tr><td>Who submits</td><td>The agency, often without showing you</td><td className="us">Only after your approval</td></tr>
-              <tr><td>Your files</td><td>Telegram and email</td><td className="us">Encrypted, deletable any time</td></tr>
+              {[
+                ['Price', 'Thousands of dollars', 'Free checklist · low monthly plan'],
+                ['Document list', 'Generic, by message', 'Exact, per programme and per student'],
+                ['Document check', 'When a person has time', 'AI, within minutes'],
+                ['Who submits', 'The agency, often without showing you', 'Only after your approval'],
+                ['Your files', 'Telegram and email', 'Encrypted, deletable any time'],
+              ].map(([a, b, c]) => <tr key={a}><td>{t(a)}</td><td>{t(b)}</td><td className="us">{t(c)}</td></tr>)}
             </tbody>
           </table>
         </div>
@@ -130,36 +144,36 @@ export default function Landing() {
       <section id="agencies" className="container section">
         <div className="duo">
           <article className="panel">
-            <p className="mono-label">For students</p>
-            <h3 className="display-xs">Get early access</h3>
-            <p className="muted">The checklist is free today. Document checks and one-click submission open soon.</p>
-            <Waitlist cta="Join the list" />
+            <p className="mono-label">{t('For students')}</p>
+            <h3 className="display-xs">{t('Get early access')}</h3>
+            <p className="muted">{t('The checklist is free today. Document checks and one-click submission open soon.')}</p>
+            <Waitlist cta={t('Join the list')} />
           </article>
           <article className="panel dark">
             <Ascii art="espresso" className="panel-ascii" />
-            <p className="mono-label">For agencies & schools</p>
-            <h3 className="display-xs">Handle 5× the students</h3>
-            <p>One dashboard for every student. AI does the checking, your team approves and submits. Priced per seat.</p>
-            <Waitlist kind="agency" cta="Talk to us" />
+            <p className="mono-label">{t('For agencies & schools')}</p>
+            <h3 className="display-xs">{t('Handle 5× the students')}</h3>
+            <p>{t('One dashboard for every student. AI does the checking, your team approves and submits. Priced per seat.')}</p>
+            <Waitlist kind="agency" cta={t('Talk to us')} />
           </article>
         </div>
       </section>
 
       <section className="container section narrow">
-        <p className="mono-label">Questions</p>
-        <h2 className="display-sm">Things students ask us</h2>
+        <p className="mono-label">{t('Questions')}</p>
+        <h2 className="display-sm">{t('Things students ask us')}</h2>
         <div className="faq-list">
           {[
             ['Do I really not need an agency?', 'No. The process is long but not hard: the university application, then the visa steps for your country. We walk you through each one.'],
             ['I finished 11 years of school. Can I apply for a bachelor?', 'It depends on the country. Italy needs 12 years, so with 11 you need a completed university year or a foundation year. Germany usually needs a Studienkolleg (foundation year) or completed university study. US universities accept a finished secondary school certificate. Your profile shows which applies to you.'],
-            ['What do US universities need that Europe doesn\'t?', 'Essays, recommendation letters and proof of funds for your Form I-20. SAT or ACT is optional at many universities. Deadlines come earlier too: many close between December and January.'],
+            ["What do US universities need that Europe doesn't?", 'Essays, recommendation letters and proof of funds for your Form I-20. SAT or ACT is optional at many universities. Deadlines come earlier too: many close between December and January.'],
             ['Is studying in Germany really free?', 'Most public universities charge no tuition, but some states and universities charge non-EU students, and you need a blocked account for the visa. Each programme page shows the details we have verified.'],
             ['Will you write my motivation letter?', 'No. Universities can reject ghost-written letters. Our AI gives feedback on your own draft.'],
             ['Are my documents safe?', 'Every file is encrypted with its own key before it is stored, and you can delete everything at any time.'],
           ].map(([q, a]) => (
             <details key={q} className="faq">
-              <summary>{q}<span className="plus" aria-hidden="true">+</span></summary>
-              <p>{a}</p>
+              <summary>{t(q)}<span className="plus" aria-hidden="true">+</span></summary>
+              <p>{t(a)}</p>
             </details>
           ))}
         </div>
@@ -169,6 +183,7 @@ export default function Landing() {
 }
 
 function HeroDemo({ programs }) {
+  const { t } = useT();
   const [step, setStep] = useState(1);
   const [programId, setProgramId] = useState('');
   const [profile, setProfile] = useState({ school_years: 11, wants_scholarship: true, documents_language: 'uz', english_test: '' });
@@ -194,85 +209,86 @@ function HeroDemo({ programs }) {
     }
   };
   const reset = () => { setStep(1); setResult(null); };
+  const degree = (d) => t(d === 'bachelor' ? 'Bachelor' : 'Master').toLowerCase();
 
   return (
     <div className="demo">
       <div className="demo-bar">
         <span className="dots"><i /><i /><i /></span>
-        {['Choose', 'Answer', 'Your list'].map((t, i) => (
-          <span key={t} className={`demo-tab ${step === i + 1 ? 'on' : ''}`}>{i + 1} · {t}</span>
+        {['Choose', 'Answer', 'Your list'].map((label, n) => (
+          <span key={label} className={`demo-tab ${step === n + 1 ? 'on' : ''}`}>{n + 1} · {t(label)}</span>
         ))}
-        <button className="link small push" onClick={reset}>Start over</button>
+        <button className="link small push" onClick={reset}>{t('Start over')}</button>
       </div>
       <div className="demo-body">
         {error && <div className="error">{error}</div>}
         {step === 1 && (
           <>
-            <h3>Where would you like to study?</h3>
+            <h3>{t('Where would you like to study?')}</h3>
             <select className="big-input" value={programId} onChange={(e) => setProgramId(e.target.value)}>
-              {[['IT', 'Italy'], ['DE', 'Germany'], ['US', 'USA']].map(([c, label]) => (
-                <optgroup key={c} label={label}>
-                  {programs.filter((p) => p.country === c).map((p) => <option key={p.id} value={p.id}>{p.name} — {p.university} ({p.degree})</option>)}
+              {['IT', 'DE', 'US'].map((c) => (
+                <optgroup key={c} label={t(COUNTRY[c])}>
+                  {programs.filter((p) => p.country === c).map((p) => <option key={p.id} value={p.id}>{p.name} — {p.university} ({degree(p.degree)})</option>)}
                 </optgroup>
               ))}
             </select>
             <div className="demo-actions">
-              <span className="hint">click here →</span>
-              <button className="btn primary" disabled={!programId} onClick={() => setStep(2)}>Next</button>
-              <span className="muted small">No account. Nothing is saved.</span>
+              <span className="hint">{t('click here →')}</span>
+              <button className="btn primary" disabled={!programId} onClick={() => setStep(2)}>{t('Next')}</button>
+              <span className="muted small">{t('No account. Nothing is saved.')}</span>
             </div>
           </>
         )}
         {step === 2 && (
           <>
-            <h3>Two quick questions</h3>
+            <h3>{t('Two quick questions')}</h3>
             {program?.degree === 'bachelor' && (
               <div className="q">
-                <span>Years of school you finished</span>
+                <span>{t('Years of school you finished')}</span>
                 <div className="chips">
                   {[11, 12].map((y) => (
-                    <button key={y} className={`chip ${profile.school_years === y ? 'on' : ''}`} onClick={() => setProfile({ ...profile, school_years: y })}>{y} years</button>
+                    <button key={y} className={`chip ${profile.school_years === y ? 'on' : ''}`} onClick={() => setProfile({ ...profile, school_years: y })}>{t('{n} years', { n: y })}</button>
                   ))}
                 </div>
               </div>
             )}
             {program?.country === 'IT' ? (
               <div className="q">
-                <span>Do you want a DSU scholarship?</span>
+                <span>{t('Do you want a DSU scholarship?')}</span>
                 <div className="chips">
                   {[[true, 'Yes, please'], [false, 'No']].map(([v, l]) => (
-                    <button key={l} className={`chip ${profile.wants_scholarship === v ? 'on' : ''}`} onClick={() => setProfile({ ...profile, wants_scholarship: v })}>{l}</button>
+                    <button key={l} className={`chip ${profile.wants_scholarship === v ? 'on' : ''}`} onClick={() => setProfile({ ...profile, wants_scholarship: v })}>{t(l)}</button>
                   ))}
                 </div>
               </div>
             ) : (
               <div className="q">
-                <span>What language are your documents in?</span>
+                <span>{t('What language are your documents in?')}</span>
                 <div className="chips">
                   {[['uz', 'Uzbek'], ['ru', 'Russian'], ['en', 'English'], ['mixed', 'Mixed']].map(([v, l]) => (
-                    <button key={v} className={`chip ${profile.documents_language === v ? 'on' : ''}`} onClick={() => setProfile({ ...profile, documents_language: v })}>{l}</button>
+                    <button key={v} className={`chip ${profile.documents_language === v ? 'on' : ''}`} onClick={() => setProfile({ ...profile, documents_language: v })}>{t(l)}</button>
                   ))}
                 </div>
               </div>
             )}
             <div className="demo-actions">
-              <span className="hint">almost →</span>
-              <button className="btn primary" onClick={build}>Build my checklist</button>
+              <span className="hint">{t('almost →')}</span>
+              <button className="btn primary" onClick={build}>{t('Build my checklist')}</button>
             </div>
           </>
         )}
         {step === 3 && result && (
           <>
             <h3>
-              You need <span className="marker">{result.checklist.items.length} documents</span> for {result.university}
+              {t('You need')} <span className="marker">{t('{n} documents', { n: result.checklist.items.length })}</span> {t('for {university}', { university: result.university })}
             </h3>
             {result.checklist.warnings[0] && <div className="notice small">{result.checklist.warnings[0]}</div>}
             <ol className="mini-list">
               {result.checklist.items.slice(0, 5).map((it) => <li key={it.type}>{it.title}</li>)}
-              {result.checklist.items.length > 5 && <li className="more">+ {result.checklist.items.length - 5} more</li>}
+              {result.checklist.items.length > 5 && <li className="more">{t('+ {n} more', { n: result.checklist.items.length - 5 })}</li>}
             </ol>
             <div className="demo-actions">
-              <Link to={`/programs/${result.id}`} className="btn primary">See the full list with explanations →</Link>
+              <Link to={`/programs/${result.id}`} className="btn primary">{t('See the full list with explanations →')}</Link>
             </div>
           </>
         )}

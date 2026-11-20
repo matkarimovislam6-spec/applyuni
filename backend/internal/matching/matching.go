@@ -492,14 +492,14 @@ func language(p Profile, prog Program, now time.Time) (Check, float64) {
 		c.Fix = "Retake the test before applying."
 		return c, 0.3
 	}
-	min, where := 6.0, "Italian"
+	min, where := 6.0, "Italy"
 	switch prog.Country {
 	case "DE":
-		min, where = 6.5, "German"
+		min, where = 6.5, "Germany"
 	case "US":
-		min, where = 6.5, "US"
+		min, where = 6.5, "the US"
 	}
-	minNote := fmt.Sprintf("Most %s universities ask for about IELTS %.1f (or the TOEFL/Duolingo equivalent); this programme's exact minimum isn't verified yet.", where, min)
+	minNote := fmt.Sprintf("Most universities in %s ask for about IELTS %.1f (or the TOEFL/Duolingo equivalent); this programme's exact minimum isn't verified yet.", where, min)
 	if prog.Meta.EnglishMinIELTS > 0 {
 		min = prog.Meta.EnglishMinIELTS
 		minNote = fmt.Sprintf("This programme asks for IELTS %.1f or equivalent.", min)

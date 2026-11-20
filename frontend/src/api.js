@@ -1,10 +1,14 @@
 // All calls go to the same origin, so the browser sends the HttpOnly session
 // cookie automatically. The page never sees or stores the token itself.
+// The chosen language goes with every request; the server translates its text.
+let apiLang = 'en';
+export const setApiLang = (lang) => { apiLang = lang; };
+
 async function request(method, path, body) {
   const res = await fetch(`/api${path}`, {
     method,
     credentials: 'same-origin',
-    headers: body ? { 'Content-Type': 'application/json' } : {},
+    headers: { 'X-Lang': apiLang, ...(body ? { 'Content-Type': 'application/json' } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
   if (res.status === 204) return null;
