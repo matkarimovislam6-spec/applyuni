@@ -4,6 +4,7 @@ import Landing from './pages/Landing.jsx';
 import Programs from './pages/Programs.jsx';
 import Program from './pages/Program.jsx';
 import ThemeToggle from './ThemeToggle.jsx';
+import MadeIn from './MadeIn.jsx';
 
 export function Logo() {
   return (
@@ -47,7 +48,7 @@ export default function App() {
         <div className="container footer-inner">
           <div>
             <Logo />
-            <p className="muted small">Made in Tashkent for students who'd rather spend 10 million soums on their first year abroad.</p>
+            <MadeIn />
           </div>
           <p className="mono-label">Always confirm deadlines on the university's official call · © {new Date().getFullYear()}</p>
         </div>
