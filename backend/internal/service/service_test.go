@@ -68,19 +68,40 @@ func TestCoreFlow(t *testing.T) {
 	s, objects := newTestService(t)
 
 	// --- B2C student signs up; their student record is created automatically.
-	sess, err := s.Register(ctx, RegisterInput{Email: "Aziz@Example.com", Password: "supersecret1", FullName: "Aziz Karimov"})
+	sess, err := s.Register(ctx, RegisterInput{Username: "Aziz_K", Password: "supersecret1", ConfirmPassword: "supersecret1"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Register(ctx, RegisterInput{Email: "aziz@example.com", Password: "supersecret1", FullName: "Dup"}); !errors.Is(err, ErrConflict) {
-		t.Fatalf("duplicate email (different case) should conflict, got %v", err)
+	for name, in := range map[string]RegisterInput{
+		"taken (other case)": {Username: "aziz_k", Password: "supersecret1"},
+	} {
+		if _, err := s.Register(ctx, in); !errors.Is(err, ErrConflict) {
+			t.Errorf("%s: expected conflict, got %v", name, err)
+		}
 	}
-	if _, err := s.Login(ctx, "AZIZ@example.com", "supersecret1"); err != nil {
-		t.Fatalf("login should be case-insensitive: %v", err)
+	for name, in := range map[string]RegisterInput{
+		"mismatch":          {Username: "bobur", Password: "supersecret1", ConfirmPassword: "supersecret2"},
+		"short password":    {Username: "bobur", Password: "short"},
+		"password=username": {Username: "bobur123", Password: "Bobur123"},
+		"bad username":      {Username: "a!", Password: "supersecret1"},
+		"too short name":    {Username: "ab", Password: "supersecret1"},
+	} {
+		if _, err := s.Register(ctx, in); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%s: expected invalid, got %v", name, err)
+		}
+	}
+	if _, err := s.Login(ctx, "AZIZ_K", "supersecret1"); err != nil {
+		t.Fatalf("login should ignore username case: %v", err)
+	}
+	if _, err := s.Login(ctx, "aziz_k", "wrong-password"); !errors.Is(err, ErrBadLogin) {
+		t.Fatalf("wrong password should fail, got %v", err)
+	}
+	if _, err := s.Login(ctx, "nobody", "supersecret1"); !errors.Is(err, ErrBadLogin) {
+		t.Fatalf("unknown user should fail the same way, got %v", err)
 	}
 	c := claimsOf(t, s, sess)
 	me, err := s.Me(ctx, c)
-	if err != nil || me.StudentID == nil || me.OrgKind != "personal" {
+	if err != nil || me.StudentID == nil || me.OrgKind != "personal" || me.Username != "aziz_k" {
 		t.Fatalf("me: %+v %v", me, err)
 	}
 	sid := *me.StudentID
@@ -170,7 +191,7 @@ func TestCoreFlow(t *testing.T) {
 	}
 
 	// --- B2B agency: seats, staff review, and isolation from the B2C tenant.
-	asess, err := s.Register(ctx, RegisterInput{Email: "owner@agency.uz", Password: "supersecret1", FullName: "Dilnoza", AccountType: "agency", OrgName: "Tashkent Study"})
+	asess, err := s.Register(ctx, RegisterInput{Username: "dilnoza", Email: "owner@agency.uz", Password: "supersecret1", FullName: "Dilnoza", AccountType: "agency", OrgName: "Tashkent Study"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -24,21 +25,27 @@ import (
 )
 
 type API struct {
-	svc       *service.Service
-	tokens    *auth.Issuer
-	maxUpload int64
-	log       *slog.Logger
+	svc           *service.Service
+	tokens        *auth.Issuer
+	maxUpload     int64
+	secureCookies bool
+	loginsByUser  *limiter // 10 failures per username per 15 min
+	loginsByIP    *limiter // 50 per IP: many mobile users share one IP
+	log           *slog.Logger
 }
 
-func New(svc *service.Service, tokens *auth.Issuer, corsOrigin string, maxUploadMB int64, log *slog.Logger) http.Handler {
-	a := &API{svc: svc, tokens: tokens, maxUpload: maxUploadMB << 20, log: log}
+// New builds the HTTP handler. secureCookies must be true when served over HTTPS.
+func New(svc *service.Service, tokens *auth.Issuer, corsOrigin string, maxUploadMB int64, secureCookies bool, log *slog.Logger) http.Handler {
+	a := &API{svc: svc, tokens: tokens, maxUpload: maxUploadMB << 20, secureCookies: secureCookies,
+		loginsByUser: newLimiter(10, 15*time.Minute), loginsByIP: newLimiter(50, 15*time.Minute), log: log}
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID, middleware.RealIP, middleware.Recoverer, middleware.Timeout(60*time.Second))
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins: []string{corsOrigin},
-		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders: []string{"Authorization", "Content-Type"},
-		ExposedHeaders: []string{"Content-Disposition"},
+		AllowedOrigins:   []string{corsOrigin},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Authorization", "Content-Type"},
+		ExposedHeaders:   []string{"Content-Disposition"},
+		AllowCredentials: true, // the session cookie
 	}))
 	r.Use(securityHeaders)
 
@@ -46,6 +53,7 @@ func New(svc *service.Service, tokens *auth.Issuer, corsOrigin string, maxUpload
 	r.Route("/api", func(r chi.Router) {
 		r.Post("/auth/register", a.register)
 		r.Post("/auth/login", a.login)
+		r.Post("/auth/logout", a.logout)
 		r.Get("/catalog/programs", a.listPrograms)
 		r.Post("/catalog/programs/{id}/checklist", a.publicChecklist)
 		r.Post("/waitlist", a.joinWaitlist)
@@ -101,7 +109,7 @@ func (a *API) fail(w http.ResponseWriter, r *http.Request, err error) {
 		status, msg = http.StatusUnauthorized, err.Error()
 	case errors.Is(err, service.ErrInvalid), errors.Is(err, service.ErrConflict),
 		errors.Is(err, service.ErrSeatLimit), errors.Is(err, service.ErrNotReady):
-		status, msg = http.StatusUnprocessableEntity, err.Error()
+		status, msg = http.StatusUnprocessableEntity, publicMessage(err)
 		if errors.Is(err, service.ErrConflict) {
 			status = http.StatusConflict
 		}
@@ -131,6 +139,18 @@ func claims(r *http.Request) *auth.Claims { return auth.FromContext(r.Context())
 
 // ---------- handlers ----------
 
+func (a *API) setSession(w http.ResponseWriter, token string, maxAge time.Duration) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     auth.CookieName,
+		Value:    token,
+		Path:     "/",
+		MaxAge:   int(maxAge.Seconds()),
+		HttpOnly: true,                 // not readable by page scripts
+		Secure:   a.secureCookies,      // HTTPS only in production
+		SameSite: http.SameSiteLaxMode, // not sent on cross-site POSTs (CSRF)
+	})
+}
+
 func (a *API) register(w http.ResponseWriter, r *http.Request) {
 	var in service.RegisterInput
 	if err := decode(r, &in); err != nil {
@@ -142,21 +162,45 @@ func (a *API) register(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
+	a.setSession(w, s.Token, auth.SessionTTL)
 	writeJSON(w, http.StatusCreated, s)
 }
 
 func (a *API) login(w http.ResponseWriter, r *http.Request) {
-	var in struct{ Email, Password string }
+	var in struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
 	if err := decode(r, &in); err != nil {
 		a.fail(w, r, err)
 		return
 	}
-	s, err := a.svc.Login(r.Context(), in.Email, in.Password)
+	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+	if ip == "" {
+		ip = r.RemoteAddr
+	}
+	user := strings.ToLower(strings.TrimSpace(in.Username))
+	if !a.loginsByUser.allowed(user) || !a.loginsByIP.allowed(ip) {
+		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "too many failed attempts, try again in 15 minutes"})
+		return
+	}
+	s, err := a.svc.Login(r.Context(), in.Username, in.Password)
 	if err != nil {
+		if errors.Is(err, service.ErrBadLogin) {
+			a.loginsByUser.fail(user)
+			a.loginsByIP.fail(ip)
+		}
 		a.fail(w, r, err)
 		return
 	}
+	a.loginsByUser.reset(user)
+	a.setSession(w, s.Token, auth.SessionTTL)
 	writeJSON(w, http.StatusOK, s)
+}
+
+func (a *API) logout(w http.ResponseWriter, _ *http.Request) {
+	a.setSession(w, "", -time.Second) // expire the cookie
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a *API) me(w http.ResponseWriter, r *http.Request) {
@@ -445,4 +489,14 @@ func (a *API) deleteDocument(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	a.fail(w, r, err)
+}
+
+// publicMessage drops the internal category prefix ("invalid request: ",
+// "conflict: ") so users see a plain sentence.
+func publicMessage(err error) string {
+	msg := err.Error()
+	for _, sentinel := range []error{service.ErrInvalid, service.ErrConflict} {
+		msg = strings.TrimPrefix(msg, sentinel.Error()+": ")
+	}
+	return msg
 }

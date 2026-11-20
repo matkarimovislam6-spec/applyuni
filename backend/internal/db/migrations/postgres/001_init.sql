@@ -26,11 +26,13 @@ CREATE TABLE organizations (
 
 CREATE TABLE users (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  email          text NOT NULL,
+  username       text NOT NULL,         -- stored lowercased
+  email          text,                  -- optional, stored lowercased
   password_hash  text NOT NULL,
   full_name      text NOT NULL,
   created_at     timestamptz NOT NULL DEFAULT now()
 );
+CREATE UNIQUE INDEX users_username_lower ON users (lower(username));
 CREATE UNIQUE INDEX users_email_lower ON users (lower(email));
 
 CREATE TABLE memberships (

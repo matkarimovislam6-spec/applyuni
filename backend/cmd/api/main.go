@@ -88,7 +88,7 @@ func run(log *slog.Logger) error {
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           api.New(svc, tokens, cfg.CORSOrigin, cfg.MaxUploadMB, log),
+		Handler:           api.New(svc, tokens, cfg.CORSOrigin, cfg.MaxUploadMB, cfg.CookieSecure, log),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {

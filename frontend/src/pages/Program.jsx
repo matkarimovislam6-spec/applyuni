@@ -2,21 +2,38 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api.js';
 import Waitlist from '../Waitlist.jsx';
+import { useAuth } from '../auth.jsx';
 
 const DEFAULT = { school_years: 11, completed_university_years: 0, english_test: '', documents_language: 'uz', wants_scholarship: true };
 
 export default function Program() {
   const { id } = useParams();
+  const { user, profile: saved, saveProfile } = useAuth();
   const [profile, setProfile] = useState(DEFAULT);
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
+  const [savedNote, setSavedNote] = useState('');
 
-  // Recompute the checklist whenever an answer changes. Nothing is stored.
+  // Logged in: start from the answers saved to the account.
+  useEffect(() => {
+    if (saved) setProfile((p) => ({ ...p, ...saved }));
+  }, [saved]);
+
+  // Recompute the checklist whenever an answer changes.
   useEffect(() => {
     api.checklist(id, profile).then(setData).catch((e) => setError(e.message));
   }, [id, profile]);
 
-  const set = (k, v) => setProfile({ ...profile, [k]: v });
+  const set = (k, v) => {
+    const next = { ...profile, [k]: v };
+    setProfile(next);
+    if (user) {
+      // remember the change on the account
+      saveProfile({ ...(saved || {}), ...next })
+        .then(() => setSavedNote('✓ Saved to your account'))
+        .catch(() => setSavedNote('Could not save'));
+    }
+  };
 
   if (error) return <main className="container section"><div className="error">{error}</div></main>;
   if (!data) return <main className="container section muted">Loading…</main>;
@@ -40,7 +57,11 @@ export default function Program() {
       <div className="layout">
         <section className="card stack">
           <h2>About you</h2>
-          <p className="small muted">Your answers change the list. Nothing is saved.</p>
+          {user ? (
+            <p className="small muted">{savedNote || 'Your saved answers, filled in. Changes are saved to your account.'}</p>
+          ) : (
+            <p className="small muted">Your answers change the list. <Link to="/signup" state={{ from: `/programs/${id}` }}>Sign up</Link> to save them.</p>
+          )}
           {data.degree === 'bachelor' && (
             <>
               <label>Years of school completed

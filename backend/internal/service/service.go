@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"time"
 
@@ -34,7 +35,7 @@ var (
 	ErrInvalid   = errors.New("invalid request")
 	ErrSeatLimit = errors.New("seat limit reached for your plan")
 	ErrNotReady  = errors.New("application is not ready for approval")
-	ErrBadLogin  = errors.New("invalid email or password")
+	ErrBadLogin  = errors.New("wrong username or password")
 )
 
 type Service struct {
@@ -53,25 +54,50 @@ func now() time.Time { return time.Now().UTC() }
 // ================= Accounts =================
 
 type RegisterInput struct {
-	Email       string `json:"email"`
-	Password    string `json:"password"`
-	FullName    string `json:"full_name"`
-	AccountType string `json:"account_type"` // "student" (B2C) or "agency"/"school" (B2B)
-	OrgName     string `json:"org_name"`
+	Username        string `json:"username"`
+	Password        string `json:"password"`
+	ConfirmPassword string `json:"confirm_password"` // optional; checked when sent
+	Email           string `json:"email"`            // optional
+	FullName        string `json:"full_name"`        // optional, defaults to the username
+	AccountType     string `json:"account_type"`     // "student" (B2C) or "agency"/"school" (B2B)
+	OrgName         string `json:"org_name"`
 }
 
 type Session struct {
-	Token  string    `json:"token"`
+	Token  string    `json:"-"` // sent as an HttpOnly cookie, never in the body
 	UserID uuid.UUID `json:"user_id"`
 	OrgID  uuid.UUID `json:"org_id"`
 	Role   string    `json:"role"`
 }
 
+// Usernames: 3–32 characters, letters, digits, dot, underscore or hyphen,
+// starting with a letter or digit. Stored lowercased; matching ignores case.
+var usernameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{2,31}$`)
+
+const minPasswordLen = 8
+
+func normalizeUsername(u string) string { return strings.ToLower(strings.TrimSpace(u)) }
+
 func (s *Service) Register(ctx context.Context, in RegisterInput) (*Session, error) {
+	in.Username = normalizeUsername(in.Username)
 	in.Email = strings.ToLower(strings.TrimSpace(in.Email))
 	in.FullName = strings.TrimSpace(in.FullName)
-	if !strings.Contains(in.Email, "@") || len(in.Password) < 10 || in.FullName == "" {
-		return nil, fmt.Errorf("%w: valid email, full name and a password of at least 10 characters are required", ErrInvalid)
+	switch {
+	case !usernameRe.MatchString(in.Username):
+		return nil, fmt.Errorf("%w: username must be 3–32 characters: letters, numbers, dots, dashes or underscores", ErrInvalid)
+	case len(in.Password) < minPasswordLen:
+		return nil, fmt.Errorf("%w: password must be at least %d characters", ErrInvalid, minPasswordLen)
+	case len(in.Password) > 128:
+		return nil, fmt.Errorf("%w: password is too long", ErrInvalid)
+	case strings.EqualFold(in.Password, in.Username):
+		return nil, fmt.Errorf("%w: password can't be the same as the username", ErrInvalid)
+	case in.ConfirmPassword != "" && in.ConfirmPassword != in.Password:
+		return nil, fmt.Errorf("%w: passwords don't match", ErrInvalid)
+	case in.Email != "" && !strings.Contains(in.Email, "@"):
+		return nil, fmt.Errorf("%w: invalid email", ErrInvalid)
+	}
+	if in.FullName == "" {
+		in.FullName = in.Username
 	}
 	kind, role, orgName, seats := "personal", "student", in.FullName, 1
 	switch in.AccountType {
@@ -89,12 +115,19 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (*Session, err
 		return nil, err
 	}
 
+	var emailArg any
+	if in.Email != "" {
+		emailArg = in.Email
+	}
 	userID, orgID := uuid.New(), uuid.New()
 	err = s.DB.Tx(ctx, func(tx db.Conn) error {
-		if _, err := tx.Exec(ctx, `INSERT INTO users(id, email, password_hash, full_name, created_at) VALUES (?, ?, ?, ?, ?)`,
-			userID, in.Email, hash, in.FullName, now()); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO users(id, username, email, password_hash, full_name, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+			userID, in.Username, emailArg, hash, in.FullName, now()); err != nil {
 			if db.IsUniqueViolation(err) {
-				return fmt.Errorf("%w: an account with this email already exists", ErrConflict)
+				if strings.Contains(err.Error(), "email") {
+					return fmt.Errorf("%w: an account with this email already exists", ErrConflict)
+				}
+				return fmt.Errorf("%w: this username is taken", ErrConflict)
 			}
 			return err
 		}
@@ -117,14 +150,24 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (*Session, err
 	return s.session(userID, orgID, role)
 }
 
-func (s *Service) Login(ctx context.Context, email, password string) (*Session, error) {
+// dummyHash makes a login for an unknown username take as long as a wrong
+// password, so response times don't reveal which usernames exist.
+var dummyHash, _ = auth.HashPassword("not-a-real-password")
+
+// Login accepts a username (or the email, if the account has one).
+func (s *Service) Login(ctx context.Context, login, password string) (*Session, error) {
 	var userID, orgID uuid.UUID
 	var hash, role string
+	login = strings.ToLower(strings.TrimSpace(login))
 	err := s.DB.Q().QueryRow(ctx, `
 		SELECT u.id, u.password_hash, m.org_id, m.role FROM users u
 		JOIN memberships m ON m.user_id = u.id
-		WHERE u.email = ? ORDER BY m.role LIMIT 1`, strings.ToLower(strings.TrimSpace(email))).Scan(&userID, &hash, &orgID, &role)
-	if err != nil || !auth.CheckPassword(hash, password) {
+		WHERE u.username = ? OR u.email = ? ORDER BY m.role LIMIT 1`, login, login).Scan(&userID, &hash, &orgID, &role)
+	if err != nil {
+		auth.CheckPassword(dummyHash, password)
+		return nil, ErrBadLogin
+	}
+	if !auth.CheckPassword(hash, password) {
 		return nil, ErrBadLogin
 	}
 	return s.session(userID, orgID, role)
@@ -140,8 +183,10 @@ func (s *Service) session(userID, orgID uuid.UUID, role string) (*Session, error
 
 type Me struct {
 	UserID    uuid.UUID  `json:"user_id"`
+	Username  string     `json:"username"`
 	FullName  string     `json:"full_name"`
-	Email     string     `json:"email"`
+	Email     *string    `json:"email"`
+	CreatedAt time.Time  `json:"created_at"`
 	Role      string     `json:"role"`
 	OrgID     uuid.UUID  `json:"org_id"`
 	OrgName   string     `json:"org_name"`
@@ -155,9 +200,12 @@ type Me struct {
 func (s *Service) Me(ctx context.Context, c *auth.Claims) (*Me, error) {
 	m := &Me{UserID: c.UserID, Role: c.Role, OrgID: c.OrgID}
 	// Account data is not tenant data: read it outside the tenant transaction.
-	if err := s.DB.Q().QueryRow(ctx, `SELECT u.full_name, u.email, o.name, o.kind, o.plan, o.seat_limit
+	if err := s.DB.Q().QueryRow(ctx, `SELECT u.username, u.full_name, u.email, u.created_at, o.name, o.kind, o.plan, o.seat_limit
 		FROM users u, organizations o WHERE u.id = ? AND o.id = ?`, c.UserID, c.OrgID).
-		Scan(&m.FullName, &m.Email, &m.OrgName, &m.OrgKind, &m.Plan, &m.SeatLimit); err != nil {
+		Scan(&m.Username, &m.FullName, &m.Email, &m.CreatedAt, &m.OrgName, &m.OrgKind, &m.Plan, &m.SeatLimit); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound // account deleted: the cookie is stale
+		}
 		return nil, err
 	}
 	err := s.DB.Tenant(ctx, c.OrgID, func(tx db.Conn) error {

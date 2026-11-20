@@ -65,13 +65,20 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
+// SessionTTL is how long a login is remembered.
+const SessionTTL = 30 * 24 * time.Hour
+
+// CookieName holds the session token. It is HttpOnly, so page scripts
+// (and any injected script) can't read it.
+const CookieName = "applyuni_session"
+
 type Issuer struct{ secret []byte }
 
 func NewIssuer(secret string) *Issuer { return &Issuer{secret: []byte(secret)} }
 
 func (i *Issuer) Issue(userID, orgID uuid.UUID, role string) (string, error) {
 	c := Claims{UserID: userID, OrgID: orgID, Role: role, RegisteredClaims: jwt.RegisteredClaims{
-		ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(SessionTTL)),
 		IssuedAt:  jwt.NewNumericDate(time.Now()),
 	}}
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, c).SignedString(i.secret)
@@ -91,11 +98,16 @@ type ctxKey struct{}
 
 func (i *Issuer) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		h := r.Header.Get("Authorization")
-		tok, ok := strings.CutPrefix(h, "Bearer ")
+		// The browser sends the HttpOnly cookie; API clients may use a Bearer header.
+		tok, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 		if !ok {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
-			return
+			ck, err := r.Cookie(CookieName)
+			if err != nil || ck.Value == "" {
+				w.Header().Set("Content-Type", "application/json")
+				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+				return
+			}
+			tok = ck.Value
 		}
 		c, err := i.Parse(tok)
 		if err != nil {

@@ -309,3 +309,36 @@ main.container.section { padding-top: 40px; }
 @keyframes made-pop { from { transform: translateY(80%) scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .made-with-item { animation: none; } }
 .made-cup { display: block; height: 26px; width: auto; }
+
+/* ---------- Accounts ---------- */
+.auth-page { display: grid; place-items: start center; padding: 64px 20px 0; }
+.auth-card {
+  width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 16px;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 34px; box-shadow: var(--shadow);
+}
+.auth-card .display-sm { font-size: 2.6rem; }
+.auth-card .btn.big { justify-content: center; padding: 13px; margin-top: 4px; }
+.auth-card input { width: 100%; }
+.center-text { text-align: center; }
+.pw { position: relative; }
+.pw input { padding-right: 64px; }
+.pw-toggle {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%); font: inherit; font-size: 0.8rem;
+  background: none; border: 0; color: var(--muted); cursor: pointer; padding: 6px 8px; border-radius: 6px;
+}
+.pw-toggle:hover { color: var(--ink); background: var(--paper-2); }
+input[aria-invalid='true'] { border-color: var(--bad); }
+.checks { list-style: none; margin: -4px 0 0; padding: 0; display: grid; gap: 4px; font-size: 0.82rem; color: var(--muted); }
+.checks li.ok { color: var(--ok); }
+.avatar-link { display: inline-flex; align-items: center; gap: 8px; color: var(--ink); font-size: 0.92rem; font-weight: 500; }
+.avatar-link:hover { text-decoration: none; }
+.avatar {
+  width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--clay); color: var(--clay-ink); font-weight: 600; font-size: 0.9rem;
+}
+.nav-placeholder { width: 120px; }
+.account .card h2 { font-family: var(--serif); font-weight: 400; font-size: 1.9rem; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; align-items: end; }
+.form-grid input:disabled { opacity: .5; }
+.saved { color: var(--ok); font-size: 0.9rem; }
+@media (max-width: 640px) { .auth-card { padding: 24px; } .nav-placeholder { width: 60px; } }

@@ -11,7 +11,9 @@ type Config struct {
 	DatabaseURL string
 	JWTSecret   string
 	CORSOrigin  string
-	MaxUploadMB int64
+	// CookieSecure marks the session cookie HTTPS-only. Must be true in production.
+	CookieSecure bool
+	MaxUploadMB  int64
 
 	// Key management: "local" (dev only, KEK from env) or "vault" (OpenBao/Vault transit).
 	KMSProvider   string
@@ -42,6 +44,7 @@ func Load() (*Config, error) {
 		DatabaseURL:     env("DATABASE_URL", "sqlite:./data/applyuni.db"),
 		JWTSecret:       os.Getenv("JWT_SECRET"),
 		CORSOrigin:      env("CORS_ORIGIN", "http://localhost:5173"),
+		CookieSecure:    env("COOKIE_SECURE", "false") == "true",
 		MaxUploadMB:     int64(envInt("MAX_UPLOAD_MB", 20)),
 		KMSProvider:     env("KMS_PROVIDER", "local"),
 		LocalKEK:        os.Getenv("LOCAL_KEK_BASE64"),
