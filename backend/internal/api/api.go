@@ -19,6 +19,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/matkarimovislam6-spec/applyuni/backend/internal/auth"
+	"github.com/matkarimovislam6-spec/applyuni/backend/internal/requirements"
 	"github.com/matkarimovislam6-spec/applyuni/backend/internal/service"
 )
 
@@ -46,6 +47,8 @@ func New(svc *service.Service, tokens *auth.Issuer, corsOrigin string, maxUpload
 		r.Post("/auth/register", a.register)
 		r.Post("/auth/login", a.login)
 		r.Get("/catalog/programs", a.listPrograms)
+		r.Post("/catalog/programs/{id}/checklist", a.publicChecklist)
+		r.Post("/waitlist", a.joinWaitlist)
 
 		r.Group(func(r chi.Router) {
 			r.Use(tokens.Middleware)
@@ -172,6 +175,38 @@ func (a *API) listPrograms(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, p)
+}
+
+func (a *API) publicChecklist(w http.ResponseWriter, r *http.Request) {
+	id, err := idParam(r)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	var prof requirements.Profile
+	if err := decode(r, &prof); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	p, err := a.svc.PublicChecklist(r.Context(), id, prof)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, p)
+}
+
+func (a *API) joinWaitlist(w http.ResponseWriter, r *http.Request) {
+	var in service.WaitlistInput
+	if err := decode(r, &in); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	if err := a.svc.JoinWaitlist(r.Context(), in); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]bool{"ok": true})
 }
 
 func (a *API) listStudents(w http.ResponseWriter, r *http.Request) {
