@@ -6,6 +6,13 @@
     <title>ApplyUni — Study in Italy without an agency</title>
     <meta name="description" content="Get the exact document list for Italian universities, have AI check your documents, and apply without paying an agency." />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23c8643b'/><path d='M16 7 5 12.5 16 18l11-5.5zM9.5 15.5v4.8c0 1.9 3 3.7 6.5 3.7s6.5-1.8 6.5-3.7v-4.8L16 18.8z' fill='%23fbf6ea'/></svg>" />
+    <script>
+      // Apply a saved theme before first paint so there is no flash.
+      try {
+        var t = localStorage.getItem('applyuni_theme');
+        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />

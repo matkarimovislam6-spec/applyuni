@@ -23,15 +23,39 @@
   --radius: 14px;
   --shadow: 0 1px 0 rgba(31, 27, 22, 0.04), 0 18px 50px -24px rgba(90, 64, 20, 0.28);
 }
+/* Dark theme: follows the system unless the visitor picked light; or forced by the toggle. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --paper: #17140f; --paper-2: #1d1913; --card: #211c15; --ink: #f3ecdc; --ink-2: #d9cfbb;
     --muted: #a69a85; --line: #352d22; --clay: #e07b4f; --clay-ink: #1a140d; --marker: #b8892a;
     --ascii: #4a3f2e; --ok: #8fcf9b; --ok-bg: #1d2a1e; --warn: #f0b75a; --warn-bg: #2e2312;
     --bad: #f39a83; --bad-bg: #331a14;
     --shadow: 0 18px 50px -24px rgba(0, 0, 0, 0.7);
+    color-scheme: dark;
   }
 }
+:root[data-theme='dark'] {
+  --paper: #17140f; --paper-2: #1d1913; --card: #211c15; --ink: #f3ecdc; --ink-2: #d9cfbb;
+  --muted: #a69a85; --line: #352d22; --clay: #e07b4f; --clay-ink: #1a140d; --marker: #b8892a;
+  --ascii: #4a3f2e; --ok: #8fcf9b; --ok-bg: #1d2a1e; --warn: #f0b75a; --warn-bg: #2e2312;
+  --bad: #f39a83; --bad-bg: #331a14;
+  --shadow: 0 18px 50px -24px rgba(0, 0, 0, 0.7);
+  color-scheme: dark;
+}
+:root[data-theme='light'] { color-scheme: light; }
+body { transition: background-color .25s ease, color .25s ease; }
+
+/* Theme toggle */
+.theme-toggle {
+  position: relative; width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center;
+  border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; overflow: hidden; flex: none;
+}
+.theme-toggle:hover { border-color: var(--ink-2); }
+.theme-toggle:focus-visible { outline: 2px solid var(--clay); outline-offset: 2px; }
+.theme-toggle svg { position: absolute; transition: transform .45s cubic-bezier(.2, .8, .2, 1), opacity .3s; }
+.theme-toggle[data-mode='light'] .moon { transform: translateY(140%) rotate(-60deg); opacity: 0; }
+.theme-toggle[data-mode='dark'] .sun { transform: translateY(-140%) rotate(90deg); opacity: 0; }
+@media (prefers-reduced-motion: reduce) { .theme-toggle svg, body { transition: none; } }
 
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }

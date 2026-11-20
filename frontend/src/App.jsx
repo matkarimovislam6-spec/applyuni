@@ -3,6 +3,7 @@ import { Link, Navigate, NavLink, Route, Routes, useLocation } from 'react-route
 import Landing from './pages/Landing.jsx';
 import Programs from './pages/Programs.jsx';
 import Program from './pages/Program.jsx';
+import ThemeToggle from './ThemeToggle.jsx';
 
 export function Logo() {
   return (
@@ -31,6 +32,7 @@ export default function App() {
             <NavLink to="/programs" className="navlink hide-sm">Universities</NavLink>
             <a href="/#how" className="navlink hide-sm">How it works</a>
             <a href="/#agencies" className="navlink hide-sm">For agencies</a>
+            <ThemeToggle />
             <Link to="/programs" className="btn primary sm">Get my checklist</Link>
           </nav>
         </div>
