@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -181,12 +182,25 @@ func TestMatchProgramAnyLevel(t *testing.T) {
 func TestGermanyUSACatalogue(t *testing.T) {
 	s, _ := newTestService(t)
 	ctx := context.Background()
-	for country, want := range map[string]int{"DE": 2, "US": 3, "IT": 10} {
+	for country, want := range map[string]int{"DE": 5, "US": 7, "IT": 15} {
 		progs, err := s.ListPrograms(ctx, country, "")
 		if err != nil || len(progs) != want {
 			t.Fatalf("%s: %d programmes (%v), want %d", country, len(progs), err, want)
 		}
 	}
+	// Every programme either has verified rounds or says why it has none.
+	all, _ := s.ListPrograms(ctx, "", "")
+	for _, p := range all {
+		if len(p.Deadlines) == 0 && p.CallNote == nil {
+			t.Errorf("%s / %s: no deadlines and no explanation", p.University, p.Name)
+		}
+		for _, d := range p.Deadlines {
+			if d.SourceURL == "" || d.VerifiedAt.IsZero() {
+				t.Errorf("%s / %s: round %q lacks source or check date", p.University, p.Name, d.Round)
+			}
+		}
+	}
+
 	us, _ := s.ListPrograms(ctx, "US", "")
 	byName := map[string]*ProgramInfo{}
 	for _, p := range us {
@@ -200,8 +214,8 @@ func TestGermanyUSACatalogue(t *testing.T) {
 	}
 	de, _ := s.ListPrograms(ctx, "DE", "")
 	for _, p := range de {
-		if p.Currency != "EUR" || len(p.Deadlines) != 1 {
-			t.Errorf("%s: currency %s, %d deadlines", p.University, p.Currency, len(p.Deadlines))
+		if p.Currency != "EUR" {
+			t.Errorf("%s: currency %s", p.University, p.Currency)
 		}
 	}
 	// country rules: German master's checklist includes the GRE for RWTH, the US list asks for proof of funds
@@ -220,5 +234,24 @@ func TestGermanyUSACatalogue(t *testing.T) {
 		if p.Country == "US" && !has["financial_documents"] {
 			t.Errorf("%s checklist should include proof of funds", p.University)
 		}
+	}
+}
+
+// Every programme has a selectivity tier for weighted grade scoring.
+func TestSelectivityAssigned(t *testing.T) {
+	s, _ := newTestService(t)
+	progs, _ := s.ListPrograms(context.Background(), "", "")
+	counts := map[float64]int{}
+	for _, p := range progs {
+		var meta struct {
+			Selectivity float64 `json:"selectivity"`
+		}
+		if err := json.Unmarshal(p.Requirements, &meta); err != nil || meta.Selectivity < 1 || meta.Selectivity > 3 {
+			t.Errorf("%s / %s: selectivity %v (%v)", p.University, p.Name, meta.Selectivity, err)
+		}
+		counts[meta.Selectivity]++
+	}
+	if counts[1] != 9 || counts[3] != 2 {
+		t.Errorf("unexpected tier counts: %v", counts)
 	}
 }

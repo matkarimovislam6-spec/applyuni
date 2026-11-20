@@ -45,6 +45,15 @@ function CountryArt({ country }) {
 
 export default function Landing() {
   const i = useRotation(PLACES.length);
+  const [catalogue, setCatalogue] = useState([]);
+  useEffect(() => {
+    api.programs('').then(setCatalogue).catch(() => setCatalogue([]));
+  }, []);
+  // universities per country, straight from the catalogue
+  const byCountry = [['IT', 'Italy'], ['DE', 'Germany'], ['US', 'USA']].map(([code, label]) => [
+    label,
+    [...new Set(catalogue.filter((p) => p.country === code).map((p) => p.university))].sort(),
+  ]);
   const [word, country] = PLACES[i];
   return (
     <main>
@@ -61,19 +70,15 @@ export default function Landing() {
             Agencies charge students <em>thousands of dollars</em> for paperwork you can do yourself.
             Whether it's Italy, Germany or the USA, we tell you every document you need, check them with AI, and submit after you approve.
           </p>
-          <HeroDemo />
+          <HeroDemo programs={catalogue} />
         </div>
       </section>
 
       <section className="band">
         <div className="container band-inner">
-          <span className="mono-label">Universities in the catalogue</span>
+          <span className="mono-label">{new Set(catalogue.map((p) => p.university)).size || ''} universities · {catalogue.length || ''} programmes in the catalogue</span>
           <div className="logo-groups">
-            {[
-              ['Italy', ['Politecnico di Milano', 'Bologna', 'Sapienza Roma', 'Padova', 'Politecnico di Torino', 'Statale Milano']],
-              ['Germany', ['RWTH Aachen', 'TU Munich']],
-              ['USA', ['Purdue', 'Arizona State', 'Illinois Urbana-Champaign']],
-            ].map(([c, us]) => (
+            {byCountry.filter(([, us]) => us.length).map(([c, us]) => (
               <div key={c} className="logo-group">
                 <span className="mono-label">{c}</span>
                 <div className="logos">{us.map((u) => <span key={u}>{u}</span>)}</div>
@@ -163,20 +168,20 @@ export default function Landing() {
   );
 }
 
-function HeroDemo() {
+function HeroDemo({ programs }) {
   const [step, setStep] = useState(1);
-  const [programs, setPrograms] = useState([]);
   const [programId, setProgramId] = useState('');
   const [profile, setProfile] = useState({ school_years: 11, wants_scholarship: true, documents_language: 'uz', english_test: '' });
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    api.programs('').then((p) => {
-      setPrograms(p);
-      setProgramId((p.find((x) => x.country === 'IT' && x.degree === 'bachelor') || p[0])?.id || '');
-    }).catch((e) => setError(e.message));
-  }, []);
+    if (!programId && programs.length) {
+      // start on a programme you can apply to right now
+      const live = (x) => ['open', 'due'].includes(x.deadline_status?.state);
+      setProgramId((programs.find((x) => live(x) && x.degree === 'bachelor') || programs.find(live) || programs[0]).id);
+    }
+  }, [programs, programId]);
 
   const program = programs.find((p) => p.id === programId);
   const build = async () => {

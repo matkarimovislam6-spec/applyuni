@@ -68,6 +68,7 @@ type Meta struct {
 	EnglishMinIELTS  float64  `json:"english_min_ielts"` // only when verified
 	MinGPAPct        float64  `json:"min_gpa_pct"`       // only when verified
 	MinGPANote       string   `json:"min_gpa_note"`
+	Selectivity      int      `json:"selectivity"` // 1 very selective … 3 moderate (editorial)
 	EntryTest        string   `json:"entry_test"`
 	EntryTestSource  string   `json:"entry_test_source"`
 	NeedsPortfolio   bool     `json:"needs_portfolio"`
@@ -100,11 +101,12 @@ const (
 )
 
 type Check struct {
-	Key    string `json:"key"`
-	Label  string `json:"label"`
-	Status Status `json:"status"`
-	Detail string `json:"detail"`
-	Fix    string `json:"fix,omitempty"`
+	Key    string      `json:"key"`
+	Label  string      `json:"label"`
+	Status Status      `json:"status"`
+	Detail string      `json:"detail"`
+	Fix    string      `json:"fix,omitempty"`
+	Score  *GradeScore `json:"score,omitempty"` // grades check only: the weighted breakdown
 }
 
 type Result struct {
@@ -203,9 +205,19 @@ func verdict(r Result) string {
 			return "not_eligible"
 		}
 	}
+	// A required certificate you don't have yet (English, German, Italian)
+	// rules out "strong", however good the rest looks.
+	languagePending := false
+	for _, c := range r.Checks {
+		if c.Key == "language" && c.Status == Action {
+			languagePending = true
+		}
+	}
 	switch {
-	case r.Score >= 75:
+	case r.Score >= 75 && !languagePending:
 		return "strong"
+	case r.Score >= 75:
+		return "possible"
 	case r.Score >= 55:
 		return "possible"
 	default:
@@ -377,24 +389,21 @@ func grades(p Profile, prog Program) (Check, float64) {
 		c.Fix = "Look at programmes without a minimum, or improve your grades if you're still studying."
 		return c, 0
 	}
-	switch {
-	case pct >= 0.85:
-		c.Status, c.Detail = Met, fmt.Sprintf("Strong %s (%d%% of the scale).", what, pc)
-		return c, 1
-	case pct >= 0.75:
-		c.Status, c.Detail = Met, fmt.Sprintf("Good %s (%d%% of the scale).", what, pc)
-		return c, 0.75
-	case pct >= 0.65:
+	// weighted score: grade × origin university × programme selectivity (scale_algorithm.go)
+	g := ScoreGrade(pct, p.University, prog.Degree != "master", prog.Meta.Selectivity)
+	c.Detail = g.Explain(what)
+	c.Score = &g
+	switch g.Band {
+	case "strong", "good":
+		c.Status = Met
+	case "borderline":
 		c.Status = Warning
-		c.Detail = fmt.Sprintf("Average %s (%d%% of the scale). Selective programmes rank applicants by grades.", what, pc)
 		c.Fix = "Strengthen the rest of your application: test scores, motivation letter, experience."
-		return c, 0.45
 	default:
 		c.Status = Warning
-		c.Detail = fmt.Sprintf("Low %s (%d%% of the scale): admission to competitive programmes is unlikely.", what, pc)
-		c.Fix = "Add less competitive programmes to your list."
-		return c, 0.15
+		c.Fix = "This programme is likely out of reach on grades; add less selective programmes to your list."
 	}
+	return c, g.Fraction
 }
 
 // IELTS-equivalent of the student's English test.
