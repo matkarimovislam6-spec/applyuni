@@ -18,7 +18,9 @@ export function Logo() {
 
 export default function App() {
   const { pathname } = useLocation();
-  useEffect(() => window.scrollTo(0, 0), [pathname]);
+  useEffect(() => {
+    window.scrollTo(0, 0); // braces: newer browsers return a Promise here, which React must not treat as a cleanup
+  }, [pathname]);
 
   return (
     <>

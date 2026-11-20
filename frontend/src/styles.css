@@ -227,6 +227,7 @@ th.us { color: var(--clay); }
 .program:hover .arrow { transform: translateX(4px); }
 
 /* ---------- Programme page ---------- */
+main.container.section { padding-top: 40px; }
 .back { margin-top: 8px; }
 .back:hover { color: var(--ink); text-decoration: none; }
 .facts { display: grid; grid-template-columns: repeat(3, 1fr); border-block: 1px solid var(--line); }
@@ -264,7 +265,7 @@ th.us { color: var(--clay); }
   .hero { padding-top: 52px; }
   .demo-bar .demo-tab:not(.on) { display: none; }
   .demo-body { padding: 22px 18px; }
-  .float.a3, .float.a4 { display: none; }
+  .float { display: none; }
   .facts { grid-template-columns: 1fr; }
   .facts > div + div { padding-left: 0; border-left: 0; border-top: 1px solid var(--line); }
   table { font-size: 0.85rem; }
