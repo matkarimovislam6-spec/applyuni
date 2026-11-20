@@ -169,7 +169,100 @@ function liberty() {
   ];
 }
 
-const ART = { duomo, pizza, pisa, espresso, brandenburg, liberty };
+// ---- Germany ----
+// Drawn as raw text (backslashes are literal); the first and last empty lines are dropped.
+const lines = (txt) => txt.split('\n').slice(1, -1);
+
+function pretzel() {
+  return lines(String.raw`
+    .-""-.     .-""-.
+   /      \   /      \
+  |   .-.  \_/  .-.   |
+  |  (   )  X  (   )  |
+   \  '-'  / \  '-'  /
+    '.    /   \    .'
+      '--'     '--'
+`);
+}
+
+function beer() {
+  return lines(String.raw`
+    .-~~~~~~~~-.
+   ( o  O  o  o )
+   |~~~~~~~~~~~~|---.
+   | |  |  |  | |    \
+   | |  |  |  | |    |
+   | |  |  |  | |    /
+   | |  |  |  | |---'
+   |_|__|__|__|_|
+`);
+}
+
+function tvtower() {
+  return lines(String.raw`
+        |
+        |
+       _|_
+      |___|
+    .'::::'.
+   (::::::::)
+    '.____.'
+      |::|
+      |  |
+      |  |
+      |  |
+      |  |
+     /    \
+    /______\
+`);
+}
+
+// ---- USA ----
+function empire() {
+  return lines(String.raw`
+         |
+         |
+        /_\
+        |:|
+       _|:|_
+      |:::::|
+     _|:::::|_
+    |:::::::::|
+    |:: : : ::|
+   _|:::::::::|_
+  |:: : : : : ::|
+  |:::::::::::::|
+  |:: : : : : ::|
+  |_____________|
+`);
+}
+
+function burger() {
+  return lines(String.raw`
+     _.-'''''''-._
+   .' .  '  .  '  '.
+  /  '  .  '  .  '  \
+  \_________________/
+  ~~~~~~~~~~~~~~~~~~~
+  [#################]
+  ===================
+  (_________________)
+`);
+}
+
+function goldengate() {
+  return lines(String.raw`
+      |\                         /|
+      | \                       / |
+      |  \_______       _______/  |
+      |  |   |   \_____/   |   |  |
+  ====|==|===|=============|===|==|====
+      |                           |
+  ~~~ |  ~~~~~~~~~~~~~~~~~~~~~~~  | ~~~
+`);
+}
+
+const ART = { duomo, pizza, pisa, espresso, brandenburg, liberty, pretzel, beer, tvtower, empire, burger, goldengate };
 
 export default function Ascii({ art = 'duomo', className = '', style }) {
   const draw = ART[art] || duomo;

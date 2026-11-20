@@ -4,33 +4,56 @@ import { api } from '../api.js';
 import Ascii from '../Ascii.jsx';
 import Waitlist from '../Waitlist.jsx';
 
-const CITIES = ['Milan', 'Munich', 'the USA', 'Rome', 'Aachen', 'Bologna'];
+// The headline word and the drawings around it change together, by country.
+const PLACES = [
+  ['Milan', 'IT'], ['Munich', 'DE'], ['the USA', 'US'],
+  ['Rome', 'IT'], ['Aachen', 'DE'], ['Illinois', 'US'],
+];
 
-function RotatingWord({ words, interval = 2200 }) {
+// Four drawings per country, one per corner slot (a1 top-left … a4 right).
+const ART_SETS = {
+  IT: ['duomo', 'pizza', 'espresso', 'pisa'],
+  DE: ['brandenburg', 'tvtower', 'pretzel', 'beer'],
+  US: ['empire', 'goldengate', 'burger', 'liberty'],
+};
+
+function useRotation(length, interval = 2600) {
   const [i, setI] = useState(0);
   useEffect(() => {
-    const t = setInterval(() => setI((n) => (n + 1) % words.length), interval);
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    const t = setInterval(() => setI((n) => (n + 1) % length), interval);
     return () => clearInterval(t);
-  }, [words.length, interval]);
+  }, [length, interval]);
+  return i;
+}
+
+function RotatingWord({ word }) {
   return (
     <span className="rotator" aria-live="polite">
-      <span key={words[i]} className="rotator-word">{words[i]}</span>
+      <span key={word} className="rotator-word">{word}</span>
     </span>
   );
 }
 
+function CountryArt({ country }) {
+  return (
+    <div key={country} className="art-set" aria-hidden="true">
+      {ART_SETS[country].map((art, n) => <Ascii key={art} art={art} className={`float a${n + 1}`} />)}
+    </div>
+  );
+}
+
 export default function Landing() {
+  const i = useRotation(PLACES.length);
+  const [word, country] = PLACES[i];
   return (
     <main>
       <section className="hero">
-        <Ascii art="duomo" className="float a1" />
-        <Ascii art="pizza" className="float a2" />
-        <Ascii art="brandenburg" className="float a3" />
-        <Ascii art="liberty" className="float a4" />
+        <CountryArt country={country} />
         <div className="container hero-inner">
           <p className="mono-label">Italy · Germany · USA · bachelor & master</p>
           <h1 className="display">
-            Study in <RotatingWord words={CITIES} />
+            Study in <RotatingWord word={word} />
             <br />
             <span className="marker">without paying</span> an agency.
           </h1>
