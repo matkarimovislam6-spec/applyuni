@@ -303,8 +303,9 @@ main.container.section { padding-top: 40px; }
 /* Footer: "Made in [flag] with [rotating]" */
 .made-in { display: flex; align-items: center; gap: 7px; margin-top: 12px; color: var(--muted); font-size: 0.92rem; }
 .made-in .flag { border-radius: 2px; box-shadow: 0 0 0 1px var(--line); flex: none; }
-.made-with { display: inline-grid; place-items: center; width: 22px; height: 22px; overflow: hidden; }
+.made-with { display: inline-grid; place-items: center start; width: 38px; height: 28px; overflow: hidden; }
 .made-with-item { display: inline-grid; place-items: center; animation: made-pop 0.45s cubic-bezier(.2, .8, .2, 1); }
-.made-with .emoji { font-size: 1.05rem; line-height: 1; }
+.made-with .emoji { font-size: 1.35rem; line-height: 1; }
 @keyframes made-pop { from { transform: translateY(80%) scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .made-with-item { animation: none; } }
+.made-cup { display: block; height: 26px; width: auto; }

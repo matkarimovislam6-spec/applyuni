@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import cokeCup from './assets/coke-zero-cup.png';
 
 // Uzbekistan flag as SVG (the 🇺🇿 emoji shows as "UZ" letters on Windows).
 function UzFlag() {
@@ -32,10 +33,21 @@ function ClaudeMark() {
   );
 }
 
+// "Man technologist" emoji: each device draws its own version; on iPhone and
+// Mac it is Apple's (a man at a laptop with the Apple logo).
+function ManWithMac() {
+  return <span className="emoji" role="img" aria-label="man with a MacBook">{'\u{1F468}\u200D\u{1F4BB}'}</span>;
+}
+
+// Coke Zero Sugar cup (photo, background removed).
+function CokeCup() {
+  return <img className="made-cup" src={cokeCup} alt="Coke Zero" width="14" height="26" />;
+}
+
 const THINGS = [
   { key: 'claude', node: <ClaudeMark />, label: 'Claude' },
-  { key: 'laptop', node: <span className="emoji">💻</span>, label: 'a laptop' },
-  { key: 'soda', node: <span className="emoji">🥤</span>, label: 'soda' },
+  { key: 'mac', node: <ManWithMac />, label: 'a MacBook' },
+  { key: 'coke', node: <CokeCup />, label: 'Coke Zero' },
 ];
 
 export default function MadeIn() {
@@ -50,7 +62,7 @@ export default function MadeIn() {
       <span>Made in</span>
       <UzFlag />
       <span>with</span>
-      <span className="made-with" aria-label="Claude, a laptop and soda">
+      <span className="made-with" aria-label="Claude, a MacBook and Coke Zero">
         <span key={thing.key} className="made-with-item" aria-hidden="true">{thing.node}</span>
       </span>
     </p>
