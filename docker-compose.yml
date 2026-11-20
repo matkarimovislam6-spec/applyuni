@@ -1,0 +1,44 @@
+# Local development stack. In production these run on servers in Uzbekistan
+# (personal data localisation law), with real secrets and TLS.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: applyuni
+      POSTGRES_PASSWORD: applyuni
+      POSTGRES_DB: applyuni
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U applyuni"]
+      interval: 2s
+      retries: 20
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: applyuni
+      MINIO_ROOT_PASSWORD: applyuni-dev-secret
+    ports: ["9000:9000", "9001:9001"]
+    volumes: [miniodata:/data]
+
+  # OpenBao (open-source Vault fork) in dev mode, with the transit engine
+  # enabled and a key created by the init container below.
+  openbao:
+    image: openbao/openbao:2.2.0
+    command: server -dev -dev-root-token-id=dev-root-token -dev-listen-address=0.0.0.0:8200
+    cap_add: [IPC_LOCK]
+    ports: ["8200:8200"]
+
+  openbao-init:
+    image: openbao/openbao:2.2.0
+    depends_on: [openbao]
+    environment:
+      BAO_ADDR: http://openbao:8200
+      BAO_TOKEN: dev-root-token
+    entrypoint: ["/bin/sh", "-c", "sleep 3; bao secrets enable transit || true; bao write -f transit/keys/applyuni-documents type=aes256-gcm96 || true"]
+
+volumes:
+  pgdata:
+  miniodata:
