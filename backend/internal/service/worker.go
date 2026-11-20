@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/matkarimovislam6-spec/applyuni/backend/internal/db"
-	"github.com/matkarimovislam6-spec/applyuni/backend/internal/portal"
+	"github.com/matkarimovislam6-spec/applyuni/backend/internal/verify"
 )
 
 const maxAttempts = 5
@@ -74,6 +74,8 @@ func (s *Service) RunOne(ctx context.Context) (bool, error) {
 	switch j.kind {
 	case "analyze_document":
 		err = s.analyzeDocument(ctx, j)
+	case "create_portal_account":
+		err = s.createPortalAccount(ctx, j)
 	case "submit_application":
 		err = s.submitApplication(ctx, j)
 	default:
@@ -101,12 +103,15 @@ func (s *Service) onJobGaveUp(ctx context.Context, j job, cause error) {
 	_ = s.DB.Tenant(ctx, j.orgID, func(tx db.Conn) error {
 		switch j.kind {
 		case "analyze_document":
-			_, err := tx.Exec(ctx, `UPDATE documents SET status = 'uploaded' WHERE org_id = ? AND id = ?`, j.orgID, j.payload["document_id"])
+			// the AI couldn't read it: a person will
+			_, err := tx.Exec(ctx, `UPDATE documents SET status = 'needs_review' WHERE org_id = ? AND id = ? AND status = 'analyzing'`, j.orgID, j.payload["document_id"])
 			return err
-		case "submit_application":
-			_, err := tx.Exec(ctx, `UPDATE applications SET status = 'needs_attention', status_note = ?, updated_at = ? WHERE org_id = ? AND id = ?`,
-				explain(cause), now(), j.orgID, j.payload["application_id"])
-			return err
+		case "create_portal_account", "submit_application":
+			appID, err := uuid.Parse(j.payload["application_id"])
+			if err != nil {
+				return err
+			}
+			return park(ctx, tx, j.orgID, appID, explain(cause))
 		}
 		return nil
 	})
@@ -136,114 +141,21 @@ func (s *Service) analyzeDocument(ctx context.Context, j job) error {
 	if err != nil {
 		return err
 	}
-	status := "rejected"
-	if analysis.Accept && analysis.MatchesExpected {
-		status = "accepted"
-	}
+	// The AI reads; the rules decide (package verify).
+	check := verify.Check(doc.DocType, *analysis, now())
+	v := storedVerdict{Base: check.Status, Issues: check.Issues, Notes: check.Notes}
 	return s.DB.Tenant(ctx, j.orgID, func(tx db.Conn) error {
-		if _, err := tx.Exec(ctx, `UPDATE documents SET status = ?, ai_result = ? WHERE org_id = ? AND id = ?`, status, string(raw), j.orgID, docID); err != nil {
+		res, err := tx.Exec(ctx, `UPDATE documents SET status = ?, ai_result = ?, verdict = ? WHERE org_id = ? AND id = ? AND status = 'analyzing'`,
+			v.status(), string(raw), v.json(), j.orgID, docID)
+		if err != nil {
+			return err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return nil // replaced or reviewed by a person meanwhile
+		}
+		if err := s.crossCheck(ctx, tx, j.orgID, doc.StudentID); err != nil {
 			return err
 		}
 		return s.refreshApplications(ctx, tx, j.orgID, doc.StudentID)
-	})
-}
-
-func (s *Service) submitApplication(ctx context.Context, j job) error {
-	appID, err := uuid.Parse(j.payload["application_id"])
-	if err != nil {
-		return err
-	}
-	var bundle portal.Bundle
-	var studentID uuid.UUID
-	err = s.DB.Tenant(ctx, j.orgID, func(tx db.Conn) error {
-		a, err := getApp(ctx, tx, j.orgID, appID)
-		if err != nil {
-			return fmt.Errorf("load application: %w", err)
-		}
-		if a.Status != "approved" && a.Status != "submitting" {
-			return fmt.Errorf("application status is %s, refusing to submit without approval", a.Status)
-		}
-		// Submit exactly what was approved: re-check the document hashes.
-		var snapRaw string
-		if err := tx.QueryRow(ctx, `SELECT snapshot FROM approvals WHERE org_id = ? AND application_id = ? ORDER BY approved_at DESC LIMIT 1`,
-			j.orgID, appID).Scan(&snapRaw); err != nil {
-			return fmt.Errorf("no approval on record: %w", err)
-		}
-		var snap struct {
-			Documents []struct{ Type, ID, SHA256 string } `json:"documents"`
-			Profile   map[string]any                      `json:"profile"`
-			Student   string                              `json:"student"`
-		}
-		if err := json.Unmarshal([]byte(snapRaw), &snap); err != nil {
-			return err
-		}
-		var alias *string
-		_ = tx.QueryRow(ctx, `SELECT email_alias FROM students WHERE org_id = ? AND id = ?`, j.orgID, a.StudentID).Scan(&alias)
-		bundle = portal.Bundle{ApplicationID: a.ID.String(), Portal: a.Program.Portal, University: a.Program.University,
-			Program: a.Program.Name, Degree: a.Program.Degree, StudentName: snap.Student, Profile: snap.Profile}
-		if alias != nil {
-			bundle.StudentEmail = *alias
-		}
-		for _, d := range snap.Documents {
-			id, _ := uuid.Parse(d.ID)
-			doc, data, err := s.loadPlaintext(ctx, tx, j.orgID, id)
-			if err != nil {
-				return fmt.Errorf("document %s changed or missing since approval: %w", d.Type, err)
-			}
-			if sha256Hex(data) != d.SHA256 {
-				return fmt.Errorf("document %s changed since approval", d.Type)
-			}
-			bundle.Documents = append(bundle.Documents, portal.Document{Type: d.Type, Filename: doc.Filename, ContentType: doc.ContentType, Data: data})
-		}
-		// The student's login on this portal (created once, stored encrypted).
-		user, pw, err := s.portalLogin(ctx, tx, j.orgID, a.StudentID, a.Program.Portal, bundle.StudentEmail)
-		if err != nil {
-			return err
-		}
-		bundle.Fields = portal.BuildFields(snap.Student, bundle.StudentEmail, user, pw, snap.Profile, a.Program.Name, a.Program.Degree)
-		// An approval is on record and every document matches the hash that
-		// was approved: only now may a flow press its Submit step.
-		bundle.Approved = true
-		studentID = a.StudentID
-		_, err = tx.Exec(ctx, `UPDATE applications SET status = 'submitting', updated_at = ? WHERE org_id = ? AND id = ?`, now(), j.orgID, appID)
-		return err
-	})
-	if err != nil {
-		return err
-	}
-
-	adapter, err := s.Portals.Get(bundle.Portal)
-	if errors.Is(err, portal.ErrNoAdapter) {
-		// Not retryable: park the application with a clear note.
-		return s.DB.Tenant(ctx, j.orgID, func(tx db.Conn) error {
-			_, err := tx.Exec(ctx, `UPDATE applications SET status = 'needs_attention', status_note = ?, updated_at = ? WHERE org_id = ? AND id = ?`,
-				fmt.Sprintf("Automated submission to %s is not available yet. Your approved package is ready.", bundle.University), now(), j.orgID, appID)
-			return err
-		})
-	}
-	if err != nil {
-		return err
-	}
-	res, err := adapter.Submit(ctx, &bundle)
-	if err != nil {
-		return classify(err)
-	}
-	return s.DB.Tenant(ctx, j.orgID, func(tx db.Conn) error {
-		// Keep the portal's confirmation page as an encrypted receipt.
-		if len(res.Receipt) > 0 {
-			if _, _, err := s.storeDocument(ctx, tx, j.orgID, studentID, "submission_receipt",
-				fmt.Sprintf("receipt-%s.png", bundle.Portal), "image/png", res.Receipt, "accepted"); err != nil {
-				return err
-			}
-		}
-		t := now()
-		if !res.Submitted { // e.g. a flow running in dry-run mode
-			_, err := tx.Exec(ctx, `UPDATE applications SET status = 'needs_attention', status_note = ?, updated_at = ? WHERE org_id = ? AND id = ?`,
-				res.Note, t, j.orgID, appID)
-			return err
-		}
-		_, err := tx.Exec(ctx, `UPDATE applications SET status = 'submitted', portal_ref = ?, status_note = ?, submitted_at = ?, updated_at = ?
-			WHERE org_id = ? AND id = ?`, res.PortalRef, res.Note, t, t, j.orgID, appID)
-		return err
 	})
 }

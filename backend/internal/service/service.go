@@ -20,12 +20,12 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/matkarimovislam6-spec/applyuni/backend/internal/ai"
 	"github.com/matkarimovislam6-spec/applyuni/backend/internal/auth"
 	"github.com/matkarimovislam6-spec/applyuni/backend/internal/crypto"
 	"github.com/matkarimovislam6-spec/applyuni/backend/internal/db"
 	"github.com/matkarimovislam6-spec/applyuni/backend/internal/portal"
 	"github.com/matkarimovislam6-spec/applyuni/backend/internal/storage"
+	"github.com/matkarimovislam6-spec/applyuni/backend/internal/verify"
 )
 
 var (
@@ -38,15 +38,23 @@ var (
 	ErrBadLogin  = errors.New("wrong username or password")
 )
 
+// Analyzer reads one document (package ai, backed by Claude). An interface
+// so tests can use a predictable reader.
+type Analyzer interface {
+	AnalyzeDocument(ctx context.Context, expectedType, contentType string, data []byte) (*verify.Extraction, json.RawMessage, error)
+}
+
 type Service struct {
 	DB         *db.DB
 	Env        *crypto.Envelope
 	Store      storage.Store
-	AI         *ai.Client // nil = AI disabled
+	AI         Analyzer // nil = AI disabled: documents wait for a person
 	Portals    *portal.Registry
 	Tokens     *auth.Issuer
 	MailDomain string
-	Log        *slog.Logger
+	// InboundSecret: shared secret the mail provider sends with each email.
+	InboundSecret string
+	Log           *slog.Logger
 }
 
 func now() time.Time { return time.Now().UTC() }

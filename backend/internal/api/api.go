@@ -2,6 +2,7 @@
 package api
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -58,6 +59,7 @@ func New(svc *service.Service, tokens *auth.Issuer, corsOrigin string, maxUpload
 		r.Get("/catalog/programs", a.listPrograms)
 		r.Post("/catalog/programs/{id}/checklist", a.publicChecklist)
 		r.Post("/waitlist", a.joinWaitlist)
+		r.Post("/inbound/email", a.inboundEmail) // mail provider webhook, shared-secret auth
 
 		r.Group(func(r chi.Router) {
 			r.Use(tokens.Middleware)
@@ -77,6 +79,7 @@ func New(svc *service.Service, tokens *auth.Issuer, corsOrigin string, maxUpload
 			r.Post("/applications/{id}/approve", a.approve)
 			r.Get("/documents/{id}/download", a.downloadDocument)
 			r.Post("/documents/{id}/review", a.reviewDocument)
+			r.Get("/review/documents", a.reviewQueue)
 			r.Delete("/documents/{id}", a.deleteDocument)
 		})
 	})
@@ -540,4 +543,41 @@ func publicMessage(err error) string {
 		msg = strings.TrimPrefix(msg, sentinel.Error()+": ")
 	}
 	return msg
+}
+
+// inboundEmail receives one email for a student's platform address from the
+// mail provider. It is authenticated with INBOUND_SECRET, not a session.
+func (a *API) inboundEmail(w http.ResponseWriter, r *http.Request) {
+	secret := a.svc.InboundSecret
+	got := r.Header.Get("X-Inbound-Secret")
+	if secret == "" || subtle.ConstantTimeCompare([]byte(got), []byte(secret)) != 1 {
+		http.NotFound(w, r)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 2<<20)
+	var m service.InboundEmail
+	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad message"})
+		return
+	}
+	err := a.svc.ReceiveEmail(r.Context(), m)
+	switch {
+	case errors.Is(err, service.ErrNotFound):
+		// Unknown address: accept and drop, so the provider doesn't retry.
+		w.WriteHeader(http.StatusAccepted)
+	case err != nil:
+		a.fail(w, r, err)
+	default:
+		w.WriteHeader(http.StatusAccepted)
+	}
+}
+
+func (a *API) reviewQueue(w http.ResponseWriter, r *http.Request) {
+	c := auth.FromContext(r.Context())
+	docs, err := a.svc.ReviewQueue(r.Context(), c)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, docs)
 }

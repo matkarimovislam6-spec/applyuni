@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -15,11 +14,8 @@ import (
 	"github.com/matkarimovislam6-spec/applyuni/backend/internal/auth"
 	"github.com/matkarimovislam6-spec/applyuni/backend/internal/crypto"
 	"github.com/matkarimovislam6-spec/applyuni/backend/internal/db"
+	"github.com/matkarimovislam6-spec/applyuni/backend/internal/intake"
 )
-
-var allowedTypes = map[string]bool{
-	"application/pdf": true, "image/jpeg": true, "image/png": true, "image/webp": true,
-}
 
 var docTypeRe = regexp.MustCompile(`^[a-z_]{2,48}$`)
 
@@ -32,14 +28,16 @@ type Document struct {
 	SizeBytes   int64     `json:"size_bytes"`
 	Status      string    `json:"status"`
 	AIResult    db.JSON   `json:"ai_result"`
+	Verdict     db.JSON   `json:"verdict"` // see storedVerdict
+	Pages       *int      `json:"pages,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
 }
 
-const docCols = `id, student_id, doc_type, filename, content_type, size_bytes, status, ai_result, created_at`
+const docCols = `id, student_id, doc_type, filename, content_type, size_bytes, status, ai_result, verdict, pages, created_at`
 
 func scanDoc(r interface{ Scan(...any) error }) (*Document, error) {
 	d := &Document{}
-	err := r.Scan(&d.ID, &d.StudentID, &d.DocType, &d.Filename, &d.ContentType, &d.SizeBytes, &d.Status, &d.AIResult, &d.CreatedAt)
+	err := r.Scan(&d.ID, &d.StudentID, &d.DocType, &d.Filename, &d.ContentType, &d.SizeBytes, &d.Status, &d.AIResult, &d.Verdict, &d.Pages, &d.CreatedAt)
 	return d, err
 }
 
@@ -51,29 +49,56 @@ func getDoc(ctx context.Context, tx db.Conn, orgID, docID uuid.UUID) (*Document,
 	return d, err
 }
 
-func (s *Service) UploadDocument(ctx context.Context, c *auth.Claims, studentID uuid.UUID, docType, filename, contentType string, data []byte) (*Document, error) {
+// UploadDocument is stage 1 of the cycle: inspect the file (its real type
+// comes from its bytes, not the browser), ignore exact re-uploads, encrypt
+// and store it, mark older versions of the same document as superseded, and
+// queue the AI check. Without AI, the file waits for a person (needs_review).
+func (s *Service) UploadDocument(ctx context.Context, c *auth.Claims, studentID uuid.UUID, docType, filename, _ string, data []byte) (*Document, error) {
 	if !docTypeRe.MatchString(docType) {
 		return nil, fmt.Errorf("%w: invalid document type", ErrInvalid)
 	}
-	if !allowedTypes[contentType] {
-		return nil, fmt.Errorf("%w: only PDF, JPEG, PNG or WEBP files are accepted", ErrInvalid)
+	info, err := intake.Inspect(data, filename)
+	if err != nil {
+		if intake.IsProblem(err) {
+			return nil, fmt.Errorf("%w: %s", ErrInvalid, err.Error())
+		}
+		return nil, err
 	}
-	if len(data) == 0 {
-		return nil, fmt.Errorf("%w: empty file", ErrInvalid)
-	}
-	status := "uploaded"
+	status := "needs_review"
 	if s.AI != nil {
 		status = "analyzing"
 	}
+	sum := sha256.Sum256(data)
 	var doc *Document
 	var key string
-	err := s.DB.Tenant(ctx, c.OrgID, func(tx db.Conn) error {
+	err = s.DB.Tenant(ctx, c.OrgID, func(tx db.Conn) error {
 		if err := authorizeStudent(ctx, tx, c, studentID); err != nil {
 			return err
 		}
+		// The same file again (double click, retry on a bad connection): keep the first.
+		var existing uuid.UUID
+		err := tx.QueryRow(ctx, `SELECT id FROM documents WHERE org_id = ? AND student_id = ? AND doc_type = ? AND sha256 = ? AND status <> 'superseded'`,
+			c.OrgID, studentID, docType, sum[:]).Scan(&existing)
+		if err == nil {
+			doc, err = getDoc(ctx, tx, c.OrgID, existing)
+			return err
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
 		var docID uuid.UUID
-		var err error
-		if docID, key, err = s.storeDocument(ctx, tx, c.OrgID, studentID, docType, filename, contentType, data, status); err != nil {
+		if docID, key, err = s.storeDocument(ctx, tx, c.OrgID, studentID, docType, info.Filename, info.ContentType, data, status); err != nil {
+			return err
+		}
+		if info.Pages > 0 {
+			if _, err := tx.Exec(ctx, `UPDATE documents SET pages = ? WHERE org_id = ? AND id = ?`, info.Pages, c.OrgID, docID); err != nil {
+				return err
+			}
+		}
+		// A new version replaces the old one (kept for the audit trail and for
+		// any submission already approved with it).
+		if _, err := tx.Exec(ctx, `UPDATE documents SET status = 'superseded' WHERE org_id = ? AND student_id = ? AND doc_type = ? AND id <> ? AND status <> 'superseded'`,
+			c.OrgID, studentID, docType, docID); err != nil {
 			return err
 		}
 		if s.AI != nil {
@@ -82,6 +107,9 @@ func (s *Service) UploadDocument(ctx context.Context, c *auth.Claims, studentID 
 			}
 		}
 		if err := audit(ctx, tx, c, "document.upload", docID.String()); err != nil {
+			return err
+		}
+		if err := s.crossCheck(ctx, tx, c.OrgID, studentID); err != nil {
 			return err
 		}
 		if err := s.refreshApplications(ctx, tx, c.OrgID, studentID); err != nil {
@@ -128,7 +156,7 @@ func (s *Service) ListDocuments(ctx context.Context, c *auth.Claims, studentID u
 		if err := authorizeStudent(ctx, tx, c, studentID); err != nil {
 			return err
 		}
-		rows, err := tx.Query(ctx, `SELECT `+docCols+` FROM documents WHERE org_id = ? AND student_id = ? ORDER BY created_at DESC`, c.OrgID, studentID)
+		rows, err := tx.Query(ctx, `SELECT `+docCols+` FROM documents WHERE org_id = ? AND student_id = ? AND status <> 'superseded' ORDER BY created_at DESC`, c.OrgID, studentID)
 		if err != nil {
 			return err
 		}
@@ -151,7 +179,7 @@ func (s *Service) loadPlaintext(ctx context.Context, tx db.Conn, orgID, docID uu
 	var nonce, wrapped []byte
 	d := &Document{}
 	err := tx.QueryRow(ctx, `SELECT `+docCols+`, object_key, nonce, wrapped_dek, key_ref FROM documents WHERE org_id = ? AND id = ?`, orgID, docID).
-		Scan(&d.ID, &d.StudentID, &d.DocType, &d.Filename, &d.ContentType, &d.SizeBytes, &d.Status, &d.AIResult, &d.CreatedAt,
+		Scan(&d.ID, &d.StudentID, &d.DocType, &d.Filename, &d.ContentType, &d.SizeBytes, &d.Status, &d.AIResult, &d.Verdict, &d.Pages, &d.CreatedAt,
 			&key, &nonce, &wrapped, &ref)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil, ErrNotFound
@@ -204,19 +232,20 @@ func (s *Service) ReviewDocument(ctx context.Context, c *auth.Claims, docID uuid
 		if accept {
 			status = "accepted"
 		}
-		// merge the manual review into whatever the AI wrote
-		merged := map[string]any{}
-		if len(d.AIResult) > 0 {
-			_ = json.Unmarshal(d.AIResult, &merged)
+		v := loadVerdict(d.Verdict)
+		v.Manual, v.Base, v.Cross = true, status, nil
+		if note != "" {
+			v.Issues = []string{note}
+		} else if accept {
+			v.Issues = []string{}
 		}
-		merged["manual_review"] = true
-		merged["accept"] = accept
-		merged["issues"] = nonEmpty(note)
-		b, _ := json.Marshal(merged)
-		if _, err := tx.Exec(ctx, `UPDATE documents SET status = ?, ai_result = ? WHERE org_id = ? AND id = ?`, status, string(b), c.OrgID, docID); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE documents SET status = ?, verdict = ? WHERE org_id = ? AND id = ?`, status, v.json(), c.OrgID, docID); err != nil {
 			return err
 		}
 		if err := audit(ctx, tx, c, "document.review."+status, docID.String()); err != nil {
+			return err
+		}
+		if err := s.crossCheck(ctx, tx, c.OrgID, d.StudentID); err != nil {
 			return err
 		}
 		if err := s.refreshApplications(ctx, tx, c.OrgID, d.StudentID); err != nil {
@@ -226,13 +255,6 @@ func (s *Service) ReviewDocument(ctx context.Context, c *auth.Claims, docID uuid
 		return err
 	})
 	return doc, err
-}
-
-func nonEmpty(s string) []string {
-	if s == "" {
-		return []string{}
-	}
-	return []string{s}
 }
 
 func (s *Service) DeleteDocument(ctx context.Context, c *auth.Claims, docID uuid.UUID) error {
@@ -249,6 +271,9 @@ func (s *Service) DeleteDocument(ctx context.Context, c *auth.Claims, docID uuid
 			return err
 		}
 		if err := audit(ctx, tx, c, "document.delete", docID.String()); err != nil {
+			return err
+		}
+		if err := s.crossCheck(ctx, tx, c.OrgID, sid); err != nil {
 			return err
 		}
 		return s.refreshApplications(ctx, tx, c.OrgID, sid)

@@ -24,6 +24,8 @@ type Application struct {
 	StatusNote  *string      `json:"status_note"`
 	PortalRef   *string      `json:"portal_ref"`
 	SubmittedAt *time.Time   `json:"submitted_at"`
+	Decision    *string      `json:"decision"` // the university's answer: admitted | not_admitted | waitlisted
+	DecisionAt  *time.Time   `json:"decision_at"`
 	CreatedAt   time.Time    `json:"created_at"`
 	Program     *ProgramInfo `json:"program"`
 }
@@ -32,6 +34,7 @@ type ApplicationDetail struct {
 	*Application
 	Checklist *requirements.Checklist `json:"checklist"`
 	Approval  *ApprovalInfo           `json:"approval"`
+	Events    []Event                 `json:"events"`
 }
 
 type ApprovalInfo struct {
@@ -57,6 +60,9 @@ func (s *Service) CreateApplication(ctx context.Context, c *auth.Claims, student
 			}
 			return err
 		}
+		if err := event(ctx, tx, c.OrgID, appID, "created", ""); err != nil {
+			return err
+		}
 		return s.refreshApplications(ctx, tx, c.OrgID, studentID)
 	})
 	if err != nil {
@@ -69,7 +75,7 @@ func (s *Service) CreateApplication(ctx context.Context, c *auth.Claims, student
 	return d.Application, nil
 }
 
-const appSelect = `SELECT id, org_id, student_id, program_id, status, status_note, portal_ref, submitted_at, created_at FROM applications`
+const appSelect = `SELECT id, org_id, student_id, program_id, status, status_note, portal_ref, submitted_at, decision, decision_at, created_at FROM applications`
 
 // scanApps loads applications and their programmes. The query must filter by org_id.
 func scanApps(ctx context.Context, tx db.Conn, q string, args ...any) ([]*Application, error) {
@@ -85,7 +91,7 @@ func scanApps(ctx context.Context, tx db.Conn, q string, args ...any) ([]*Applic
 	for rows.Next() {
 		a := &Application{}
 		var pid uuid.UUID
-		if err := rows.Scan(&a.ID, &a.OrgID, &a.StudentID, &pid, &a.Status, &a.StatusNote, &a.PortalRef, &a.SubmittedAt, &a.CreatedAt); err != nil {
+		if err := rows.Scan(&a.ID, &a.OrgID, &a.StudentID, &pid, &a.Status, &a.StatusNote, &a.PortalRef, &a.SubmittedAt, &a.Decision, &a.DecisionAt, &a.CreatedAt); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -143,6 +149,9 @@ func (s *Service) GetApplication(ctx context.Context, c *auth.Claims, appID uuid
 		}
 		d.Application = a
 		if d.Checklist, err = checklist(ctx, tx, a); err != nil {
+			return err
+		}
+		if d.Events, err = loadEvents(ctx, tx, c.OrgID, appID); err != nil {
 			return err
 		}
 		ap := &ApprovalInfo{}
@@ -209,6 +218,13 @@ func (s *Service) refreshApplications(ctx context.Context, tx db.Conn, orgID, st
 			if _, err := tx.Exec(ctx, `UPDATE applications SET status = ?, updated_at = ? WHERE org_id = ? AND id = ?`, next, now(), orgID, a.ID); err != nil {
 				return err
 			}
+			kind := "documents_complete"
+			if next == "collecting_documents" {
+				kind = "documents_incomplete"
+			}
+			if err := event(ctx, tx, orgID, a.ID, kind, ""); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -250,7 +266,11 @@ func (s *Service) Approve(ctx context.Context, c *auth.Claims, appID uuid.UUID, 
 		if n, _ := res.RowsAffected(); n != 1 {
 			return ErrNotReady
 		}
-		if err := enqueue(ctx, tx, c.OrgID, "submit_application", map[string]string{"application_id": appID.String()}); err != nil {
+		// Account first (once per portal), then submission.
+		if err := enqueue(ctx, tx, c.OrgID, "create_portal_account", map[string]string{"application_id": appID.String()}); err != nil {
+			return err
+		}
+		if err := event(ctx, tx, c.OrgID, appID, "approved", fmt.Sprintf("Approved by you. Package fingerprint %x.", sum[:6])); err != nil {
 			return err
 		}
 		return audit(ctx, tx, c, "application.approve", appID.String())

@@ -69,7 +69,8 @@ func run(log *slog.Logger) error {
 		return err
 	}
 
-	var aiClient *ai.Client
+	// Leave the interface nil (not a typed nil pointer) when AI is off.
+	var aiClient service.Analyzer
 	if cfg.AnthropicAPIKey != "" {
 		aiClient = ai.New(cfg.AnthropicAPIKey, cfg.AIModel)
 	} else {
@@ -79,8 +80,12 @@ func run(log *slog.Logger) error {
 	tokens := auth.NewIssuer(cfg.JWTSecret)
 	svc := &service.Service{
 		DB: database, Env: crypto.NewEnvelope(kw), Store: store, AI: aiClient,
-		Portals: portals(log),
-		Tokens:  tokens, MailDomain: envOr("MAIL_DOMAIN", "inbox.applyuni.local"), Log: log,
+		Tokens: tokens, MailDomain: envOr("MAIL_DOMAIN", "inbox.applyuni.local"), InboundSecret: cfg.InboundSecret, Log: log,
+	}
+	// The portal agent reads verification codes from the students' platform inboxes.
+	svc.Portals = portals(log, svc.Inbox())
+	if cfg.InboundSecret == "" {
+		log.Warn("INBOUND_SECRET not set - inbound email disabled; portals that email a code can't be automated")
 	}
 	if cfg.RunWorker {
 		go svc.RunWorker(ctx)
@@ -114,12 +119,12 @@ func envOr(k, def string) string {
 // portals registers the real university flows (portal.Known) with a headless
 // Chrome runner. Universities without a flow fall back to the dry-run adapter
 // in development (PORTAL_DRY_RUN=true) or are parked with a clear note.
-func portals(log *slog.Logger) *portal.Registry {
+func portals(log *slog.Logger, inbox portal.Inbox) *portal.Registry {
 	reg := portal.NewRegistry(os.Getenv("PORTAL_DRY_RUN") == "true")
 	runner := &portal.Runner{
 		ChromePath: os.Getenv("CHROME_PATH"), // empty: find Chrome on PATH
 		Headless:   true,
-		Inbox:      portal.NewMemoryInbox(), // replaced by the mail service once inbound email is set up
+		Inbox:      inbox,
 	}
 	for _, f := range portal.Known {
 		if err := f.Validate(); err != nil {

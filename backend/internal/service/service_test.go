@@ -182,8 +182,8 @@ func TestCoreFlow(t *testing.T) {
 	}
 
 	// --- Worker submits (dry-run portal).
-	if worked, err := s.RunOne(ctx); !worked || err != nil {
-		t.Fatalf("worker: worked=%v err=%v", worked, err)
+	if n := drain(t, s); n != 2 {
+		t.Fatalf("expected 2 jobs (account, submission), ran %d", n)
 	}
 	d, _ = s.GetApplication(ctx, c, app.ID)
 	if d.Status != "submitted" || d.PortalRef == nil {
@@ -275,3 +275,20 @@ func TestCoreFlow(t *testing.T) {
 
 func second[T any](_ T, err error) error        { return err }
 func third[A, B any](_ A, _ B, err error) error { return err }
+
+// drain runs queued jobs until none is ready and returns how many ran.
+func drain(t *testing.T, s *Service) int {
+	t.Helper()
+	n := 0
+	for ; n < 20; n++ {
+		worked, err := s.RunOne(context.Background())
+		if err != nil {
+			t.Fatalf("worker: %v", err)
+		}
+		if !worked {
+			return n
+		}
+	}
+	t.Fatal("worker never ran out of jobs")
+	return n
+}

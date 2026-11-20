@@ -40,6 +40,30 @@ func (r *Runner) Run(ctx context.Context, f Flow, b *Bundle, opt RunOptions) (*R
 	if !opt.DryRun && !b.Approved {
 		return nil, ErrNotApproved
 	}
+	return r.run(ctx, f.Steps, b, opt)
+}
+
+// CreateAccount runs the flow's Account steps: register on the portal with
+// the student's platform email and generated password, then confirm the
+// emailed code. It needs the student's approval like a submission does,
+// because it hands their personal data to the university.
+func (r *Runner) CreateAccount(ctx context.Context, f Flow, b *Bundle) (*Result, error) {
+	if err := f.Validate(); err != nil {
+		return nil, err
+	}
+	if len(f.Account) == 0 {
+		return &Result{Note: "This portal has no separate registration."}, nil
+	}
+	if !b.Approved {
+		return nil, ErrNotApproved
+	}
+	if err := preflightFields(f.Account, b); err != nil {
+		return nil, err
+	}
+	return r.run(ctx, f.Account, b, RunOptions{})
+}
+
+func (r *Runner) run(ctx context.Context, steps []Step, b *Bundle, opt RunOptions) (*Result, error) {
 	stepTimeout := r.StepTimeout
 	if stepTimeout == 0 {
 		stepTimeout = 30 * time.Second
@@ -87,7 +111,7 @@ func (r *Runner) Run(ctx context.Context, f Flow, b *Bundle, opt RunOptions) (*R
 	res := &Result{Values: map[string]string{}}
 	fields := b.Fields
 
-	for i, s := range f.Steps {
+	for i, s := range steps {
 		if r.Log != nil {
 			r.Log(s.Name)
 		}
@@ -221,4 +245,8 @@ type FlowAdapter struct {
 
 func (a FlowAdapter) Submit(ctx context.Context, b *Bundle) (*Result, error) {
 	return a.Runner.Run(ctx, a.Flow, b, RunOptions{DryRun: a.DryRun})
+}
+
+func (a FlowAdapter) CreateAccount(ctx context.Context, b *Bundle) (*Result, error) {
+	return a.Runner.CreateAccount(ctx, a.Flow, b)
 }

@@ -31,11 +31,15 @@ type Config struct {
 	S3Bucket        string
 	S3UseSSL        bool
 
-	// AI. Empty key disables AI analysis (documents stay "uploaded" for manual review).
+	// AI. Empty key disables AI analysis (documents wait in needs_review for a person).
 	AnthropicAPIKey string
 	AIModel         string
 
 	RunWorker bool
+
+	// InboundSecret authenticates the mail provider posting to
+	// /api/inbound/email. Empty disables the endpoint.
+	InboundSecret string
 }
 
 func Load() (*Config, error) {
@@ -61,6 +65,10 @@ func Load() (*Config, error) {
 		AnthropicAPIKey: os.Getenv("ANTHROPIC_API_KEY"),
 		AIModel:         env("AI_MODEL", "claude-opus-5-5"),
 		RunWorker:       env("RUN_WORKER", "true") == "true",
+		InboundSecret:   os.Getenv("INBOUND_SECRET"),
+	}
+	if c.InboundSecret != "" && len(c.InboundSecret) < 24 {
+		return nil, fmt.Errorf("INBOUND_SECRET must be at least 24 characters")
 	}
 	if len(c.JWTSecret) < 32 {
 		return nil, fmt.Errorf("JWT_SECRET must be set and at least 32 characters")

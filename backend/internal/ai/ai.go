@@ -12,19 +12,13 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go/v2"
 	"github.com/anthropics/anthropic-sdk-go/v2/option"
+
+	"github.com/matkarimovislam6-spec/applyuni/backend/internal/verify"
 )
 
-type Analysis struct {
-	DetectedType    string            `json:"detected_type"`
-	MatchesExpected bool              `json:"matches_expected"`
-	Legible         bool              `json:"legible"`
-	Language        string            `json:"language"`
-	HasApostille    bool              `json:"has_apostille"`
-	ExpiryDate      string            `json:"expiry_date,omitempty"`
-	Fields          map[string]string `json:"fields"`
-	Issues          []string          `json:"issues"`
-	Accept          bool              `json:"accept"`
-}
+// Analysis is the AI's reading of one file; the decision is made by the
+// rules in package verify, not here.
+type Analysis = verify.Extraction
 
 type Client struct {
 	c     anthropic.Client
@@ -35,17 +29,26 @@ func New(apiKey, model string) *Client {
 	return &Client{c: anthropic.NewClient(option.WithAPIKey(apiKey)), model: model}
 }
 
-const systemPrompt = `You verify documents uploaded by students applying to universities abroad.
-You receive one file and the document type the platform asked for. Decide whether it is that document,
-whether it is complete and legible, and extract key fields (full name, date of birth, document number,
-issue/expiry dates, institution, grades/GPA, test scores — whichever apply).
-Set accept=true only if it matches the expected type, is legible, and nothing blocks its use
-(e.g. passport expiring within 12 months, missing pages, cropped photo page).
-List every problem in "issues" in plain, short sentences the student can act on.
+const systemPrompt = `You read documents uploaded by students applying to universities abroad.
+You receive one file and the document type the platform asked for. Report what you see; you do not decide
+admission. Be literal: copy names exactly as printed (keep the original script), never guess unreadable values,
+leave a field empty if it isn't on the document.
+
 Respond with a single JSON object and nothing else, with keys:
-detected_type, matches_expected, legible, language, has_apostille, expiry_date, fields, issues, accept.`
+- detected_type: what this document actually is, as a short snake_case type (e.g. passport, id_card, school_diploma, bank_statement, unknown)
+- matches_expected: true if it is the requested document type
+- legible: false if any part needed to read the requested fields is blurred, cut off, covered or too dark
+- confidence: 0 to 1, how sure you are about the fields you extracted
+- language: ISO 639-1 code of the document's main language (uz, ru, en, it, de, ...)
+- has_apostille: true if an apostille stamp or certificate is attached
+- fields: an object with exactly the requested field keys; dates as YYYY-MM-DD
+- issues: short sentences, addressed to the student, for anything that would stop a university accepting it
+- accept: true if nothing you can see would stop a university from accepting it`
 
 func (c *Client) AnalyzeDocument(ctx context.Context, expectedType, contentType string, data []byte) (*Analysis, json.RawMessage, error) {
+	spec := verify.SpecFor(expectedType)
+	request := fmt.Sprintf("Requested document type: %s\nWhat it should be: %s\nFields to extract: %s",
+		expectedType, orDash(spec.Hint), orDash(strings.Join(spec.Fields, ", ")))
 	b64 := base64.StdEncoding.EncodeToString(data)
 	var fileBlock anthropic.BetaContentBlockParamUnion
 	switch {
@@ -62,7 +65,7 @@ func (c *Client) AnalyzeDocument(ctx context.Context, expectedType, contentType 
 		MaxTokens: 16000,
 		System:    []anthropic.BetaTextBlockParam{{Text: systemPrompt}},
 		Messages: []anthropic.BetaMessageParam{
-			anthropic.NewBetaUserMessage(fileBlock, anthropic.NewBetaTextBlock("Expected document type: "+expectedType)),
+			anthropic.NewBetaUserMessage(fileBlock, anthropic.NewBetaTextBlock(request)),
 		},
 		// If a safety classifier declines, the request is re-served by a fallback model in the same call.
 		Fallbacks: anthropic.BetaFallbacksParamOfDefault(),
@@ -86,6 +89,13 @@ func (c *Client) AnalyzeDocument(ctx context.Context, expectedType, contentType 
 		return nil, nil, fmt.Errorf("parse AI response: %w", err)
 	}
 	return &a, raw, nil
+}
+
+func orDash(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
 }
 
 func extractJSON(s string) json.RawMessage {

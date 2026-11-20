@@ -44,7 +44,12 @@ type Step struct {
 type Flow struct {
 	Portal string // portal id, matches universities.portal
 	Name   string
-	Steps  []Step
+	// Account registers the student on the portal and confirms their email.
+	// It runs once per student and portal, right after approval; Steps then
+	// start by logging in with that account. Empty if the portal has no
+	// separate registration.
+	Account []Step
+	Steps   []Step
 }
 
 var fieldRe = regexp.MustCompile(`\{\{\s*([a-z0-9_.]+)\s*\}\}`)
@@ -52,7 +57,7 @@ var fieldRe = regexp.MustCompile(`\{\{\s*([a-z0-9_.]+)\s*\}\}`)
 // Fields lists every {{field}} the flow needs, sorted.
 func (f Flow) Fields() []string {
 	set := map[string]bool{}
-	for _, s := range f.Steps {
+	for _, s := range append(append([]Step{}, f.Account...), f.Steps...) {
 		for _, m := range fieldRe.FindAllStringSubmatch(s.Value, -1) {
 			set[m[1]] = true
 		}
@@ -79,35 +84,21 @@ func (f Flow) Documents() []string {
 // Validate checks the flow itself is well-formed: exactly one Submit, which
 // comes after everything it depends on, selectors where needed.
 func (f Flow) Validate() error {
+	for i, s := range f.Account {
+		if s.Kind == Submit || s.Kind == Upload {
+			return fmt.Errorf("account step %d (%s): registration can't upload or submit", i, s.Name)
+		}
+		if err := validStep(s); err != nil {
+			return err
+		}
+	}
 	submits := 0
 	for i, s := range f.Steps {
 		if s.Name == "" {
 			return fmt.Errorf("step %d has no name", i)
 		}
-		switch s.Kind {
-		case Goto:
-			if s.Value == "" {
-				return fmt.Errorf("step %q: goto needs a URL", s.Name)
-			}
-		case Fill, Choose, Tick, Upload, Click, Expect, OTP, Read, Submit:
-			if s.Selector == "" {
-				return fmt.Errorf("step %q: needs a selector", s.Name)
-			}
-		case Human:
-		default:
-			return fmt.Errorf("step %q: unknown kind %q", s.Name, s.Kind)
-		}
-		if s.Kind == Upload && s.DocType == "" {
-			return fmt.Errorf("step %q: upload needs a document type", s.Name)
-		}
-		if s.Kind == OTP {
-			re, err := regexp.Compile(s.CodeRe)
-			if err != nil || re.NumSubexp() != 1 {
-				return fmt.Errorf("step %q: otp needs a regexp with one capture group", s.Name)
-			}
-		}
-		if s.Kind == Read && s.Into == "" {
-			return fmt.Errorf("step %q: read needs Into", s.Name)
+		if err := validStep(s); err != nil {
+			return err
 		}
 		if s.Kind == Submit {
 			submits++
@@ -115,6 +106,38 @@ func (f Flow) Validate() error {
 	}
 	if submits != 1 {
 		return fmt.Errorf("flow %s must have exactly one submit step, has %d", f.Portal, submits)
+	}
+	return nil
+}
+
+func validStep(s Step) error {
+	if s.Name == "" {
+		return errors.New("a step has no name")
+	}
+	switch s.Kind {
+	case Goto:
+		if s.Value == "" {
+			return fmt.Errorf("step %q: goto needs a URL", s.Name)
+		}
+	case Fill, Choose, Tick, Upload, Click, Expect, OTP, Read, Submit:
+		if s.Selector == "" {
+			return fmt.Errorf("step %q: needs a selector", s.Name)
+		}
+	case Human:
+	default:
+		return fmt.Errorf("step %q: unknown kind %q", s.Name, s.Kind)
+	}
+	if s.Kind == Upload && s.DocType == "" {
+		return fmt.Errorf("step %q: upload needs a document type", s.Name)
+	}
+	if s.Kind == OTP {
+		re, err := regexp.Compile(s.CodeRe)
+		if err != nil || re.NumSubexp() != 1 {
+			return fmt.Errorf("step %q: otp needs a regexp with one capture group", s.Name)
+		}
+	}
+	if s.Kind == Read && s.Into == "" {
+		return fmt.Errorf("step %q: read needs Into", s.Name)
 	}
 	return nil
 }
@@ -134,6 +157,20 @@ func (e *MissingError) Error() string {
 		parts = append(parts, "missing documents: "+strings.Join(e.Documents, ", "))
 	}
 	return strings.Join(parts, "; ")
+}
+
+// preflightFields checks only the {{fields}} that steps use.
+func preflightFields(steps []Step, b *Bundle) error {
+	m := &MissingError{}
+	for _, k := range (Flow{Steps: steps}).Fields() {
+		if strings.TrimSpace(b.Fields[k]) == "" {
+			m.Fields = append(m.Fields, k)
+		}
+	}
+	if len(m.Fields) > 0 {
+		return m
+	}
+	return nil
 }
 
 // Preflight checks, before any browser opens, that the bundle has every field

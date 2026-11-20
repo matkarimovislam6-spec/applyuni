@@ -91,7 +91,7 @@ func readyApplication(t *testing.T, s *Service, profile string) (appID string, c
 	}
 	d, _ := s.GetApplication(ctx, cl, app.ID)
 	for _, it := range d.Checklist.Items {
-		if _, err := s.UploadDocument(ctx, cl, sid, it.Type, it.Type+".pdf", "application/pdf", []byte("%PDF-1.4 "+it.Type)); err != nil {
+		if _, err := s.UploadDocument(ctx, cl, sid, it.Type, it.Type+".pdf", "application/pdf", []byte("%PDF-1.4 "+it.Type+"\n%%EOF\n")); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -117,16 +117,14 @@ func TestWorkerSubmitsThroughBrowser(t *testing.T) {
 	s.Portals = reg
 
 	appID, _ := readyApplication(t, s, `{"degree_target":"master","education_level":"bachelor_done","gpa":"3.4/4","documents_language":"en"}`)
-	if worked, err := s.RunOne(ctx); !worked || err != nil {
-		t.Fatalf("worker: %v %v", worked, err)
-	}
+	drain(t, s)
 
 	var status, ref string
 	s.DB.Q().QueryRow(ctx, `SELECT status, coalesce(portal_ref, '') FROM applications WHERE id = ?`, appID).Scan(&status, &ref)
 	if status != "submitted" || ref != "REF-777" || mp.submitted != 1 {
 		t.Fatalf("status %s ref %q portal submissions %d", status, ref, mp.submitted)
 	}
-	if !strings.HasPrefix(mp.got["name"], "u") || mp.got["gpa"] != "3.4/4" || !bytes.Equal(mp.passport, []byte("%PDF-1.4 passport")) {
+	if !strings.HasPrefix(mp.got["name"], "u") || mp.got["gpa"] != "3.4/4" || !bytes.Equal(mp.passport, []byte("%PDF-1.4 passport\n%%EOF\n")) {
 		t.Errorf("portal received %v, passport %q", mp.got, mp.passport)
 	}
 	// receipt stored as an encrypted document
@@ -159,7 +157,7 @@ func TestWorkerParksMissingDataImmediately(t *testing.T) {
 
 	// no GPA in the profile: the flow needs {{profile.gpa}}
 	appID, _ := readyApplication(t, s, `{"degree_target":"master","education_level":"bachelor_done","documents_language":"en"}`)
-	s.RunOne(ctx)
+	drain(t, s)
 
 	var status, note, jobStatus string
 	var attempts int

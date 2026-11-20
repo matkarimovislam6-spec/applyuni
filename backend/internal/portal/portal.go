@@ -51,6 +51,12 @@ type Adapter interface {
 	Submit(ctx context.Context, b *Bundle) (*Result, error)
 }
 
+// AccountCreator is implemented by adapters whose portal needs a separate
+// registration before the application (most do).
+type AccountCreator interface {
+	CreateAccount(ctx context.Context, b *Bundle) (*Result, error)
+}
+
 var ErrNoAdapter = errors.New("no automated adapter for this portal yet")
 
 type Registry struct {
@@ -76,6 +82,10 @@ func (r *Registry) Get(portalID string) (Adapter, error) {
 		return r.fallback, nil
 	}
 	return nil, fmt.Errorf("%w (%s)", ErrNoAdapter, portalID)
+}
+
+func (DryRun) CreateAccount(_ context.Context, b *Bundle) (*Result, error) {
+	return &Result{Note: fmt.Sprintf("Dry run: account %s would be created on %s.", b.Fields["portal.username"], b.Portal)}, nil
 }
 
 // DryRun simulates a successful submission so the whole flow can be tested

@@ -50,7 +50,7 @@ type Program struct {
 
 type Item struct {
 	DocRule
-	Status     string `json:"status"` // missing | uploaded | analyzing | accepted | rejected
+	Status     string `json:"status"` // missing | uploaded | analyzing | needs_review | accepted | rejected
 	DocumentID string `json:"document_id,omitempty"`
 }
 
@@ -137,7 +137,8 @@ func conditionHolds(cond string, p Profile, prog Program) bool {
 
 // statusFor picks the best status among uploaded documents of this type.
 func statusFor(docType string, docs []UploadedDoc, it *Item) string {
-	rank := map[string]int{"rejected": 1, "uploaded": 2, "analyzing": 3, "accepted": 4}
+	// superseded files never count; a file waiting for a person ranks with one being read
+	rank := map[string]int{"rejected": 1, "uploaded": 2, "needs_review": 3, "analyzing": 3, "accepted": 4}
 	best := "missing"
 	for _, d := range docs {
 		if d.Type == docType && rank[d.Status] > rank[best] {

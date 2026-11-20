@@ -129,4 +129,3 @@ func TestEverythingIsTranslated(t *testing.T) {
 	}
 	t.Logf("checked %d distinct texts", len(texts))
 }
-
