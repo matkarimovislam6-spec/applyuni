@@ -17,6 +17,7 @@ import (
 	"github.com/matkarimovislam6-spec/applyuni/backend/internal/config"
 	"github.com/matkarimovislam6-spec/applyuni/backend/internal/crypto"
 	"github.com/matkarimovislam6-spec/applyuni/backend/internal/db"
+	"github.com/matkarimovislam6-spec/applyuni/backend/internal/ocr"
 	"github.com/matkarimovislam6-spec/applyuni/backend/internal/portal"
 	"github.com/matkarimovislam6-spec/applyuni/backend/internal/service"
 	"github.com/matkarimovislam6-spec/applyuni/backend/internal/storage"
@@ -70,12 +71,33 @@ func run(log *slog.Logger) error {
 		return err
 	}
 
-	// Leave the interface nil (not a typed nil pointer) when AI is off.
+	// Document reading: OCR on this machine first (free, data stays here),
+	// Claude for what OCR can't accept, a person for the rest. Leave the
+	// interface nil (not a typed nil pointer) when neither is available.
 	var aiClient service.Analyzer
+	var claude *ai.Client
 	if cfg.AnthropicAPIKey != "" {
-		aiClient = ai.New(cfg.AnthropicAPIKey, cfg.AIModel)
-	} else {
-		log.Warn("ANTHROPIC_API_KEY not set - AI document checks disabled, documents need manual review")
+		claude = ai.New(cfg.AnthropicAPIKey, cfg.AIModel)
+	}
+	var reader *ocr.Analyzer
+	if mode := os.Getenv("OCR_ENGINE"); mode != "off" {
+		if eng, err := ocr.Detect(mode); err != nil {
+			log.Warn("OCR unavailable", "err", err)
+		} else {
+			reader = &ocr.Analyzer{Engine: eng}
+		}
+	}
+	switch {
+	case reader != nil && claude != nil:
+		aiClient = &ocr.Chain{OCR: reader, Then: claude}
+		log.Info("document checks: OCR first, Claude for the rest", "ocr", reader.Engine.Name())
+	case reader != nil:
+		aiClient = reader
+		log.Info("document checks: OCR only; what it can't accept goes to manual review", "ocr", reader.Engine.Name())
+	case claude != nil:
+		aiClient = claude
+	default:
+		log.Warn("no OCR and no ANTHROPIC_API_KEY - every document needs manual review")
 	}
 
 	tokens := auth.NewIssuer(cfg.JWTSecret)

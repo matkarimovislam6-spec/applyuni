@@ -135,3 +135,41 @@ func levenshtein(a, b string) int {
 	}
 	return prev[len(b)]
 }
+
+// Known is what we already know about the student, from their passport or
+// profile, so a reader can look for it on other documents.
+type Known struct {
+	FullName  string // as in the passport
+	BirthDate string // YYYY-MM-DD
+}
+
+// NameAppearsIn reports whether every part of name (at least two parts for
+// a multi-part name) is written somewhere in text, in any of the spellings
+// NamesMatch accepts.
+func NameAppearsIn(name, text string) bool {
+	want := nameParts(name)
+	if len(want) == 0 {
+		return false
+	}
+	var have []string
+	for _, w := range strings.FieldsFunc(text, func(r rune) bool {
+		return !(unicode.IsLetter(r) || r == '\'' || r == '‘' || r == 'ʻ' || r == '’')
+	}) {
+		if sk := skeleton(w); len(sk) >= 2 {
+			have = append(have, sk)
+		}
+	}
+	for _, p := range want {
+		found := false
+		for _, h := range have {
+			if close(p, h) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}

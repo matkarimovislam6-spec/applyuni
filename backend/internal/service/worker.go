@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -128,8 +129,12 @@ func (s *Service) analyzeDocument(ctx context.Context, j job) error {
 	// Decrypt in a short transaction; call the AI outside it.
 	var doc *Document
 	var data []byte
+	var known verify.Known
 	if err := s.DB.Tenant(ctx, j.orgID, func(tx db.Conn) error {
-		doc, data, err = s.loadPlaintext(ctx, tx, j.orgID, docID)
+		if doc, data, err = s.loadPlaintext(ctx, tx, j.orgID, docID); err != nil {
+			return err
+		}
+		known, err = knownFacts(ctx, tx, j.orgID, doc.StudentID)
 		return err
 	}); err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -137,7 +142,13 @@ func (s *Service) analyzeDocument(ctx context.Context, j job) error {
 		}
 		return err
 	}
-	analysis, raw, err := s.AI.AnalyzeDocument(ctx, doc.DocType, doc.ContentType, data)
+	var analysis *verify.Extraction
+	var raw json.RawMessage
+	if ka, ok := s.AI.(KnownAnalyzer); ok {
+		analysis, raw, err = ka.AnalyzeKnown(ctx, doc.DocType, doc.ContentType, data, known)
+	} else {
+		analysis, raw, err = s.AI.AnalyzeDocument(ctx, doc.DocType, doc.ContentType, data)
+	}
 	if err != nil {
 		return err
 	}
@@ -212,4 +223,49 @@ func (s *Service) QueueUncheckedDocuments(ctx context.Context) (int, error) {
 		return nil
 	})
 	return n, err
+}
+
+// KnownAnalyzer is a document reader that can use what we already know about
+// the student (the OCR reader looks for their name on each document).
+type KnownAnalyzer interface {
+	AnalyzeKnown(ctx context.Context, expectedType, contentType string, data []byte, known verify.Known) (*verify.Extraction, json.RawMessage, error)
+}
+
+// knownFacts is the student's name and birth date: from their accepted
+// passport if there is one, else from the passport details in their profile.
+func knownFacts(ctx context.Context, tx db.Conn, orgID, studentID uuid.UUID) (verify.Known, error) {
+	var k verify.Known
+	var aiResult *string
+	err := tx.QueryRow(ctx, `SELECT ai_result FROM documents WHERE org_id = ? AND student_id = ? AND doc_type = 'passport' AND status = 'accepted' ORDER BY created_at DESC LIMIT 1`,
+		orgID, studentID).Scan(&aiResult)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return k, err
+	}
+	if aiResult != nil {
+		var e verify.Extraction
+		if json.Unmarshal([]byte(*aiResult), &e) == nil {
+			k.FullName, k.BirthDate = e.Fields["full_name"], e.Fields["date_of_birth"]
+		}
+	}
+	if k.FullName != "" {
+		return k, nil
+	}
+	var profile *string
+	if err := tx.QueryRow(ctx, `SELECT profile FROM students WHERE org_id = ? AND id = ?`, orgID, studentID).Scan(&profile); err != nil {
+		return k, err
+	}
+	if profile != nil {
+		var p struct {
+			First string `json:"legal_first_name"`
+			Last  string `json:"legal_last_name"`
+			DOB   string `json:"date_of_birth"`
+		}
+		if json.Unmarshal([]byte(*profile), &p) == nil {
+			k.FullName = strings.TrimSpace(p.First + " " + p.Last)
+			if k.BirthDate == "" {
+				k.BirthDate = p.DOB
+			}
+		}
+	}
+	return k, nil
 }

@@ -103,3 +103,16 @@ func TestCrossCheck(t *testing.T) {
 		t.Error("no passport: nothing to compare")
 	}
 }
+
+func TestNameAppearsIn(t *testing.T) {
+	text := "O'ZBEKISTON RESPUBLIKASI\nATTESTAT\nushbu attestat MATKARIMOV ISLOM BAHODIR O'G'LI ga berildi"
+	if !NameAppearsIn("Islom Matkarimov", text) {
+		t.Error("Latin name not found")
+	}
+	if !NameAppearsIn("Ислом Маткаримов", text) {
+		t.Error("Cyrillic spelling not found")
+	}
+	if NameAppearsIn("Islom Karimov", "ushbu attestat MATKARIMOV ALISHER ga berildi") {
+		t.Error("found a different person")
+	}
+}

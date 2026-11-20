@@ -71,6 +71,7 @@ export default function AdminReview() {
           <ol className="doclist">
             {g.docs.map((d) => {
               const notesFromChecks = [...(d.verdict?.issues || []), ...(d.verdict?.cross || []), ...(d.verdict?.notes || [])];
+              const ocr = d.ai_result?.ocr_findings || [];
               return (
                 <li key={d.id} className="stack">
                   <div className="row between wrap">
@@ -78,6 +79,12 @@ export default function AdminReview() {
                     <span className="small muted">{new Date(d.created_at).toLocaleString(locale)} · {Math.round(d.size_bytes / 1024)} KB</span>
                   </div>
                   <a className="link small" href={api.adminFileUrl(d.id)} target="_blank" rel="noopener noreferrer">{t('Open {file}', { file: d.filename })}</a>
+                  {ocr.length > 0 && (
+                    <div className="small muted">
+                      <strong>{t('OCR found:')}</strong>
+                      <ul>{ocr.map((x) => <li key={x}>{x}</li>)}</ul>
+                    </div>
+                  )}
                   {notesFromChecks.map((x) => <p key={x} className="small warn-text">{x}</p>)}
                   <input
                     placeholder={t('Reason, if rejecting (the student sees this)')}

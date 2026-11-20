@@ -233,6 +233,7 @@ export const DICT = {
   'Open {file}': ['{file} ni ochish', 'Открыть {file}'],
   'Reason, if rejecting (the student sees this)': ["Rad etish sababi (talaba buni ko'radi)", 'Причина отказа (её увидит студент)'],
   'Accept': ['Qabul qilish', 'Принять'],
+  'OCR found:': ['OCR topdi:', 'OCR нашёл:'],
   'Reject': ['Rad etish', 'Отклонить'],
   'Write the reason for rejecting, so the student knows what to fix.': ["Talaba nimani tuzatishni bilishi uchun rad etish sababini yozing.", 'Напишите причину отказа, чтобы студент знал, что исправить.'],
   'Open document review (ApplyUni staff)': ['Hujjatlarni tekshirishni ochish (ApplyUni xodimlari)', 'Открыть проверку документов (сотрудники ApplyUni)'],
