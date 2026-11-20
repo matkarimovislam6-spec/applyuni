@@ -53,3 +53,16 @@ func TestMasterSkipsBachelorOnlyDocs(t *testing.T) {
 		t.Error("Italian-taught programme should not require English certificate")
 	}
 }
+
+func TestTranslationsByDocumentLanguage(t *testing.T) {
+	rules := json.RawMessage(`{"documents":[{"type":"official_translations","title":"Translations","condition":"documents_not_in_english"}]}`)
+	for lang, want := range map[string]bool{"en": false, "uz": true, "ru": true, "mixed": true} {
+		cl, err := Build(rules, nil, Profile{DocumentsLanguage: lang}, Program{Degree: "bachelor", Language: "en"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := len(cl.Items) == 1; got != want {
+			t.Errorf("documents in %q: translations required = %v, want %v", lang, got, want)
+		}
+	}
+}

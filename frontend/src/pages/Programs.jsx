@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api.js';
 import Ascii from '../Ascii.jsx';
+import { DeadlineBadge } from '../Deadline.jsx';
 
 export default function Programs() {
   const [programs, setPrograms] = useState(null);
   const [degree, setDegree] = useState('');
+  const [openOnly, setOpenOnly] = useState(false);
   const [q, setQ] = useState('');
   const [error, setError] = useState('');
 
@@ -15,8 +17,16 @@ export default function Programs() {
 
   const shown = useMemo(() => {
     const s = q.trim().toLowerCase();
-    return (programs || []).filter((p) => !s || `${p.name} ${p.university} ${p.city}`.toLowerCase().includes(s));
-  }, [programs, q]);
+    const rank = { open: 0, upcoming: 1, not_published: 2, closed: 3 };
+    return (programs || [])
+      .filter((p) => !s || `${p.name} ${p.university} ${p.city}`.toLowerCase().includes(s))
+      .filter((p) => !openOnly || p.deadline_status?.state === 'open')
+      // most urgent first: open rounds by days left, then upcoming, unknown, closed
+      .sort((a, b) => {
+        const sa = a.deadline_status, sb = b.deadline_status;
+        return (rank[sa?.state] ?? 9) - (rank[sb?.state] ?? 9) || (sa?.days_left ?? 1e9) - (sb?.days_left ?? 1e9);
+      });
+  }, [programs, q, openOnly]);
 
   return (
     <main>
@@ -35,6 +45,7 @@ export default function Programs() {
             {[['', 'All'], ['bachelor', 'Bachelor'], ['master', 'Master']].map(([v, l]) => (
               <button key={l} className={`chip ${degree === v ? 'on' : ''}`} onClick={() => setDegree(v)}>{l}</button>
             ))}
+            <button className={`chip ${openOnly ? 'on' : ''}`} onClick={() => setOpenOnly(!openOnly)} aria-pressed={openOnly}>Open now</button>
           </div>
         </div>
         {error && <div className="error">{error}</div>}
@@ -47,13 +58,14 @@ export default function Programs() {
                 <span className="program-meta">{p.university} · {p.city}</span>
               </div>
               <div className="program-tags">
+                <DeadlineBadge status={p.deadline_status} />
                 <span className="tag">{p.degree}</span>
                 <span className="tag hide-sm">{p.language === 'en' ? 'English' : 'Italian'}</span>
                 <span className="arrow" aria-hidden="true">→</span>
               </div>
             </Link>
           ))}
-          {programs && shown.length === 0 && <p className="muted">No programmes match your search.</p>}
+          {programs && shown.length === 0 && <p className="muted">{openOnly ? 'No programme is open for applications right now.' : 'No programmes match your search.'}</p>}
         </div>
       </div>
     </main>

@@ -35,7 +35,7 @@ export default function Landing() {
             <span className="marker">without paying</span> an agency.
           </h1>
           <p className="lead">
-            Agencies charge Uzbek students <em>10,000,000+ soums</em> for paperwork you can do yourself.
+            Agencies charge students <em>thousands of dollars</em> for paperwork you can do yourself.
             We tell you every document you need, check them with AI, and submit after you approve.
           </p>
           <HeroDemo />
@@ -82,7 +82,7 @@ export default function Landing() {
               <tr><th></th><th>Typical agency</th><th className="us">ApplyUni</th></tr>
             </thead>
             <tbody>
-              <tr><td>Price</td><td>10–15 million soums</td><td className="us">Free checklist · low monthly plan</td></tr>
+              <tr><td>Price</td><td>Thousands of dollars</td><td className="us">Free checklist · low monthly plan</td></tr>
               <tr><td>Document list</td><td>Generic, by message</td><td className="us">Exact, per programme and per student</td></tr>
               <tr><td>Document check</td><td>When a person has time</td><td className="us">AI, within minutes</td></tr>
               <tr><td>Who submits</td><td>The agency, often without showing you</td><td className="us">Only after your approval</td></tr>

@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api } from '../api.js';
 import Waitlist from '../Waitlist.jsx';
 import { useAuth } from '../auth.jsx';
+import { DeadlineFact, FeeFact, Rounds } from '../Deadline.jsx';
 
 const DEFAULT = { school_years: 11, completed_university_years: 0, english_test: '', documents_language: 'uz', wants_scholarship: true };
 
@@ -49,10 +50,12 @@ export default function Program() {
       </div>
 
       <div className="facts">
-        <div><span className="mono-label">Deadline</span>{data.deadline ? new Date(data.deadline).toLocaleDateString() : <span className="warn-text">Not verified yet</span>}</div>
-        <div><span className="mono-label">Application fee</span>{data.application_fee_eur != null ? `€${data.application_fee_eur}` : '—'}</div>
-        <div><span className="mono-label">Source</span><a href={data.source_url || data.website} target="_blank" rel="noreferrer">Official website ↗</a></div>
+        <DeadlineFact program={data} />
+        <FeeFact program={data} />
+        <div className="dl-fact"><span className="mono-label">Source</span><a href={data.source_url || data.call_source_url || data.website} target="_blank" rel="noreferrer">Official website ↗</a></div>
       </div>
+
+      <Rounds program={data} />
 
       <div className="layout">
         <section className="card stack">
@@ -93,6 +96,7 @@ export default function Program() {
               <option value="uz">Uzbek</option>
               <option value="ru">Russian</option>
               <option value="en">English</option>
+              <option value="mixed">Mixed (some English, some Uzbek or Russian)</option>
             </select>
           </label>
           <label className="check">

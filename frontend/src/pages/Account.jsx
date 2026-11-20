@@ -94,6 +94,7 @@ export default function Account() {
                 <option value="uz">Uzbek</option>
                 <option value="ru">Russian</option>
                 <option value="en">English</option>
+                <option value="mixed">Mixed (some English, some Uzbek or Russian)</option>
               </select>
             </label>
             <label className="check">
