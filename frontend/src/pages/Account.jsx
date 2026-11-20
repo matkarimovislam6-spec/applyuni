@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth.jsx';
+import { api } from '../api.js';
+import { APP_STATUS } from './Application.jsx';
 import { useT } from '../i18n.jsx';
 
 // Keys must match backend internal/matching fields.
@@ -23,6 +25,7 @@ export const FIELDS = [
 ];
 
 const EMPTY = {
+  legal_first_name: '', legal_last_name: '', date_of_birth: '', sex: '', citizenship: 'Uzbekistan',
   degree_target: 'bachelor', education_level: '', school_years: 11, completed_university_years: 0, school_grade: '',
   university: '', major: '', major_name: '', gpa: '', graduation_year: '',
   english_test: '', english_score: '', english_date: '', italian_level: '', german_level: '', other_languages: [],
@@ -105,6 +108,8 @@ export default function Account() {
         <button className="btn" onClick={async () => { await logout(); nav('/'); }}>{t('Log out')}</button>
       </div>
 
+      {user.student_id && <MyApplications studentId={user.student_id} />}
+
       {!form ? <p className="muted">{t('Loading your details…')}</p> : (
         <form className="stack" onSubmit={save}>
           <div className="row between wrap">
@@ -118,6 +123,32 @@ export default function Account() {
             </div>
           </div>
           {todo.length > 0 && <div className="notice small">{t('Add your {list} for accurate match results on each programme.', { list: todoText })}</div>}
+
+          <fieldset className="card form-section">
+            <legend>{t('Personal details')}</legend>
+            <p className="small muted">{t('Exactly as in your passport. We use these to register you on university portals.')}</p>
+            <div className="form-grid">
+              <label>{t('First name(s)')}
+                <input value={form.legal_first_name || ''} onChange={(e) => set('legal_first_name', e.target.value)} autoComplete="given-name" placeholder={eg('ISLOM')} />
+              </label>
+              <label>{t('Last name')}
+                <input value={form.legal_last_name || ''} onChange={(e) => set('legal_last_name', e.target.value)} autoComplete="family-name" placeholder={eg('MATKARIMOV')} />
+              </label>
+              <label>{t('Date of birth')}
+                <input type="date" value={form.date_of_birth || ''} onChange={(e) => set('date_of_birth', e.target.value)} autoComplete="bday" max={new Date().toISOString().slice(0, 10)} />
+              </label>
+              <label>{t('Sex (as in passport)')}
+                <select value={form.sex || ''} onChange={(e) => set('sex', e.target.value)}>
+                  <option value="">{t('Choose')}</option>
+                  <option value="M">{t('Male')}</option>
+                  <option value="F">{t('Female')}</option>
+                </select>
+              </label>
+              <label>{t('Citizenship')}
+                <input value={form.citizenship || ''} onChange={(e) => set('citizenship', e.target.value)} placeholder={eg('Uzbekistan')} />
+              </label>
+            </div>
+          </fieldset>
 
           <fieldset className="card form-section">
             <legend>{t('Goal')}</legend>
@@ -316,5 +347,29 @@ export default function Account() {
         <Link to="/programs" className="btn primary">{t('Browse universities →')}</Link>
       </div>
     </main>
+  );
+}
+
+function MyApplications({ studentId }) {
+  const { t } = useT();
+  const [apps, setApps] = useState(null);
+  useEffect(() => { api.applications(studentId).then(setApps).catch(() => setApps([])); }, [studentId]);
+  if (!apps) return null;
+  return (
+    <section className="card stack">
+      <h2 className="display-xs">{t('My applications')}</h2>
+      {apps.length === 0 ? (
+        <p className="small muted">{t('No applications yet. Open a programme and press Apply.')} <Link to="/programs">{t('Browse programmes')}</Link></p>
+      ) : (
+        <ul className="mini-list">
+          {apps.map((a) => (
+            <li key={a.id} className="row between wrap">
+              <Link to={`/applications/${a.id}`}><strong>{a.program?.name}</strong> · {a.program?.university}</Link>
+              <span className="badge">{t(APP_STATUS[a.status] || a.status)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

@@ -527,3 +527,15 @@ input[aria-invalid='true'] { border-color: var(--bad); }
   .marquee-track > :nth-child(n + 15) { display: none; }
 }
 @media (max-width: 560px) { .uni-logo { height: 26px; } .marquee-track { gap: 40px; padding-right: 40px; } }
+
+/* Application progress tracker */
+.progress-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.ps { display: flex; gap: 14px; align-items: flex-start; }
+.ps p { margin: 2px 0 0; }
+.ps-n {
+  flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+  font-family: var(--mono); font-size: 0.8rem; border: 1px solid var(--line); color: var(--muted);
+}
+.ps.done .ps-n { background: var(--ok-bg); color: var(--ok); border-color: transparent; }
+.ps.now .ps-n { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.ps.next { opacity: 0.6; }

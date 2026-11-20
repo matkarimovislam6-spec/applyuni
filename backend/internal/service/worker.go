@@ -159,3 +159,57 @@ func (s *Service) analyzeDocument(ctx context.Context, j job) error {
 		return s.refreshApplications(ctx, tx, j.orgID, doc.StudentID)
 	})
 }
+
+// QueueUncheckedDocuments queues an AI check for every document that was
+// uploaded while AI checks were off, so turning them on (adding
+// ANTHROPIC_API_KEY) doesn't leave earlier uploads waiting forever.
+// Documents a person already reviewed keep their decision.
+func (s *Service) QueueUncheckedDocuments(ctx context.Context) (int, error) {
+	if s.AI == nil {
+		return 0, nil
+	}
+	n := 0
+	err := s.DB.Tx(ctx, func(tx db.Conn) error {
+		rows, err := tx.Query(ctx, `SELECT id, org_id FROM documents
+			WHERE status = 'needs_review' AND ai_result IS NULL AND verdict IS NULL`)
+		if err != nil {
+			return err
+		}
+		type doc struct{ id, org uuid.UUID }
+		var docs []doc
+		for rows.Next() {
+			var d doc
+			if err := rows.Scan(&d.id, &d.org); err != nil {
+				rows.Close()
+				return err
+			}
+			docs = append(docs, d)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		for _, d := range docs {
+			payload, _ := json.Marshal(map[string]string{"document_id": d.id.String()})
+			var pending int
+			if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM jobs WHERE kind = 'analyze_document' AND payload = ? AND status IN ('queued', 'running')`,
+				string(payload)).Scan(&pending); err != nil {
+				return err
+			}
+			if pending > 0 {
+				continue
+			}
+			// The analysis only records its result on a document marked as
+			// being analysed; this also shows "Checking…" to the applicant.
+			if _, err := tx.Exec(ctx, `UPDATE documents SET status = 'analyzing' WHERE org_id = ? AND id = ?`, d.org, d.id); err != nil {
+				return err
+			}
+			if err := enqueue(ctx, tx, d.org, "analyze_document", map[string]string{"document_id": d.id.String()}); err != nil {
+				return err
+			}
+			n++
+		}
+		return nil
+	})
+	return n, err
+}

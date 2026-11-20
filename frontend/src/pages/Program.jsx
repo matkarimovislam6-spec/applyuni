@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api.js';
 import Waitlist from '../Waitlist.jsx';
 import { useAuth } from '../auth.jsx';
@@ -176,11 +176,54 @@ export default function Program() {
           </div>
           <div className="card stack cta">
             <h3>{t('Want us to handle the rest?')}</h3>
-            <p className="small">{t('Upload your documents, let AI check them, approve once, and we submit to {university}. Coming soon.', { university: data.university })}</p>
-            <Waitlist programId={data.id} cta={t('Notify me')} />
+            <p className="small">{t('Upload your documents, let AI check them, approve once, and we submit to {university}.', { university: data.university })}</p>
+            {user?.student_id ? (
+              <ApplyButton studentId={user.student_id} programId={data.id} />
+            ) : user ? (
+              <Waitlist programId={data.id} cta={t('Notify me')} />
+            ) : (
+              <Link className="btn" to="/signup" state={{ from: `/programs/${data.id}` }}>{t('Sign up to apply')}</Link>
+            )}
           </div>
         </section>
       </div>
     </main>
+  );
+}
+
+// Opens this programme's application, creating it the first time.
+function ApplyButton({ studentId, programId }) {
+  const { t } = useT();
+  const nav = useNavigate();
+  const [existing, setExisting] = useState(undefined);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    api.applications(studentId)
+      .then((list) => setExisting(list.find((a) => a.program?.id === programId) || null))
+      .catch(() => setExisting(null));
+  }, [studentId, programId]);
+
+  const apply = async () => {
+    if (existing) return nav(`/applications/${existing.id}`);
+    setBusy(true);
+    setError('');
+    try {
+      const app = await api.createApplication(studentId, programId);
+      nav(`/applications/${app.id}`);
+    } catch (e) {
+      setError(e.message);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="stack">
+      <button className="btn" onClick={apply} disabled={busy || existing === undefined}>
+        {existing ? t('Open my application') : busy ? t('Starting…') : t('Apply')}
+      </button>
+      {error && <div className="error small">{error}</div>}
+    </div>
   );
 }

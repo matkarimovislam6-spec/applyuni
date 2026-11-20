@@ -89,24 +89,11 @@ func (r *Runner) run(ctx context.Context, steps []Step, b *Bundle, opt RunOption
 		files[d.Type] = p
 	}
 
-	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", r.Headless),
-		chromedp.Flag("disable-gpu", true),
-		chromedp.WindowSize(1280, 1000),
-	)
-	if r.ChromePath != "" {
-		opts = append(opts, chromedp.ExecPath(r.ChromePath))
+	browser, closeBrowser, err := r.startBrowser(ctx)
+	if err != nil {
+		return nil, err
 	}
-	alloc, cancelAlloc := chromedp.NewExecAllocator(ctx, opts...)
-	defer cancelAlloc()
-	browser, cancelBrowser := chromedp.NewContext(alloc)
-	defer cancelBrowser()
-	// Start the browser on the long-lived context. chromedp ties the browser's
-	// lifetime to the context of the first Run, so starting it inside a
-	// per-step timeout would close it when that step finishes.
-	if err := chromedp.Run(browser); err != nil {
-		return nil, fmt.Errorf("start browser: %w", err)
-	}
+	defer closeBrowser()
 
 	res := &Result{Values: map[string]string{}}
 	fields := b.Fields
@@ -141,15 +128,42 @@ func (r *Runner) run(ctx context.Context, steps []Step, b *Bundle, opt RunOption
 		}
 	}
 
-	// Receipt: PNG screenshot of the last page (quality 100 = PNG; below that chromedp makes JPEG).
-	var shot []byte
-	if err := chromedp.Run(browser, chromedp.FullScreenshot(&shot, 100)); err == nil {
-		res.Receipt = shot
-	}
+	r.receipt(browser, res)
 	if ref, ok := res.Values["confirmation"]; ok {
 		res.PortalRef = ref
 	}
 	return res, nil
+}
+
+// startBrowser launches Chrome. The browser lives on ctx: chromedp ties its
+// lifetime to the context of the first Run, so starting it inside a per-step
+// timeout would close it when that step finishes.
+func (r *Runner) startBrowser(ctx context.Context) (context.Context, func(), error) {
+	opts := append(chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.Flag("headless", r.Headless),
+		chromedp.Flag("disable-gpu", true),
+		chromedp.WindowSize(1280, 1000),
+	)
+	if r.ChromePath != "" {
+		opts = append(opts, chromedp.ExecPath(r.ChromePath))
+	}
+	alloc, cancelAlloc := chromedp.NewExecAllocator(ctx, opts...)
+	browser, cancelBrowser := chromedp.NewContext(alloc)
+	closeAll := func() { cancelBrowser(); cancelAlloc() }
+	if err := chromedp.Run(browser); err != nil {
+		closeAll()
+		return nil, nil, fmt.Errorf("start browser: %w", err)
+	}
+	return browser, closeAll, nil
+}
+
+// receipt saves a PNG screenshot of the current page (quality 100 = PNG;
+// below that chromedp makes JPEG).
+func (r *Runner) receipt(browser context.Context, res *Result) {
+	var shot []byte
+	if err := chromedp.Run(browser, chromedp.FullScreenshot(&shot, 100)); err == nil {
+		res.Receipt = shot
+	}
 }
 
 func (r *Runner) step(ctx context.Context, s Step, fields, files map[string]string, res *Result, b *Bundle) error {

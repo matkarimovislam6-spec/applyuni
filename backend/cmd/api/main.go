@@ -88,6 +88,11 @@ func run(log *slog.Logger) error {
 		log.Warn("INBOUND_SECRET not set - inbound email disabled; portals that email a code can't be automated")
 	}
 	if cfg.RunWorker {
+		if n, err := svc.QueueUncheckedDocuments(ctx); err != nil {
+			log.Error("queue unchecked documents", "err", err)
+		} else if n > 0 {
+			log.Info("queued AI checks for documents uploaded while AI was off", "documents", n)
+		}
 		go svc.RunWorker(ctx)
 	}
 

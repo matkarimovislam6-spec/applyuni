@@ -22,6 +22,18 @@ func BuildFields(studentName, email, portalUser, portalPassword string, profile 
 		f["student.first_name"] = parts[0]
 		f["student.last_name"] = strings.Join(parts[1:], " ")
 	}
+	// Names and birth date exactly as in the passport, when the student has
+	// given them, beat the account name.
+	first, _ := profile["legal_first_name"].(string)
+	last, _ := profile["legal_last_name"].(string)
+	if first, last = strings.TrimSpace(first), strings.TrimSpace(last); first != "" && last != "" {
+		f["student.first_name"], f["student.last_name"] = first, last
+		f["student.full_name"] = first + " " + last
+	}
+	if dob, _ := profile["date_of_birth"].(string); len(dob) == 10 && dob[4] == '-' && dob[7] == '-' {
+		f["student.date_of_birth"] = dob
+		f["student.birth_year"], f["student.birth_month"], f["student.birth_day"] = dob[:4], dob[5:7], dob[8:]
+	}
 	for k, v := range profile {
 		switch x := v.(type) {
 		case string:

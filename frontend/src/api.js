@@ -45,4 +45,23 @@ export const api = {
   student: (id) => request('GET', `/students/${id}`),
   saveProfile: (id, profile) => request('PUT', `/students/${id}/profile`, profile),
   matchProgram: (programId) => request('GET', `/me/matches/${programId}`),
+
+  // applications: documents → approval → we submit
+  applications: (studentId) => request('GET', `/students/${studentId}/applications`),
+  createApplication: (studentId, programId) => request('POST', `/students/${studentId}/applications`, { program_id: programId }),
+  application: (id) => request('GET', `/applications/${id}`),
+  approve: (id) => request('POST', `/applications/${id}/approve`, { confirm: true }),
+  documents: (studentId) => request('GET', `/students/${studentId}/documents`),
+  deleteDocument: (id) => request('DELETE', `/documents/${id}`),
+  uploadDocument: async (studentId, docType, file) => {
+    const form = new FormData();
+    form.append('doc_type', docType);
+    form.append('file', file);
+    const res = await fetch(`/api/students/${studentId}/documents`, {
+      method: 'POST', credentials: 'same-origin', headers: { 'X-Lang': apiLang }, body: form,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Upload failed (${res.status})`);
+    return data;
+  },
 };
