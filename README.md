@@ -2,6 +2,16 @@
 
 AI-powered, subscription-based university application platform. Students (B2C) and agencies or schools (B2B) upload documents. AI checks them, and after one explicit approval per application, an agent submits to the university portal. The first market is Italy.
 
+## Current MVP: public website
+
+There is no sign-in yet. The website has:
+
+- a landing page with student and agency waitlist sign-ups (`POST /api/waitlist`)
+- a list of Italian programmes (`GET /api/catalog/programs`)
+- a personal document checklist per programme, built from 4 questions without an account (`POST /api/catalog/programs/{id}/checklist`)
+
+The account, upload, approval and submission API described below is built and tested in the backend. The frontend will use it once accounts are switched on.
+
 ## Stack
 
 | Part | Choice |
