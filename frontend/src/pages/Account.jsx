@@ -1,8 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
-import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
-import { MatchCard } from '../Match.jsx';
 
 // Keys must match backend internal/matching fields.
 export const FIELDS = [
@@ -57,15 +55,10 @@ export default function Account() {
   const nav = useNavigate();
   const [form, setForm] = useState(null);
   const [status, setStatus] = useState('');
-  const [matches, setMatches] = useState(null);
 
-  const loadMatches = useCallback(() => api.matches().then(setMatches).catch(() => setMatches([])), []);
   useEffect(() => {
     if (profile) setForm({ ...EMPTY, ...profile });
   }, [profile]);
-  useEffect(() => {
-    if (user) loadMatches();
-  }, [user, loadMatches]);
 
   if (user === undefined) return <main className="container section muted">Loading…</main>;
   if (!user) return <Navigate to="/login" state={{ from: '/account' }} replace />;
@@ -84,7 +77,6 @@ export default function Account() {
       clean.other_languages = (clean.other_languages || []).filter((l) => l.language.trim());
       await saveProfile(clean);
       setStatus('saved');
-      loadMatches();
     } catch (err) {
       setStatus(err.message);
     }
@@ -107,33 +99,20 @@ export default function Account() {
         <button className="btn" onClick={async () => { await logout(); nav('/'); }}>Log out</button>
       </div>
 
-      {/* ---------- Matches ---------- */}
-      <section className="stack">
-        <div className="row between wrap">
-          <div>
-            <h2 className="display-xs">Your matches</h2>
-            <p className="small muted">How well you fit each {master ? "master's" : "bachelor's"} programme, and what to fix. Updated every time you save.</p>
-          </div>
-          {form && (
+      {/* ---------- Profile ---------- */}
+      {!form ? <p className="muted">Loading your details…</p> : (
+        <form className="stack" onSubmit={save}>
+          <div className="row between wrap">
+            <div>
+              <h2 className="display-xs">About you</h2>
+              <p className="small muted">Each programme page uses these answers to show how well you match and what to fix.</p>
+            </div>
             <div className="completeness" title={todo.length ? `Missing: ${todo.join(', ')}` : 'Complete'}>
               <span className="small">Profile {done}% complete</span>
               <div className="progress"><div style={{ width: `${done}%` }} /></div>
             </div>
-          )}
-        </div>
-        {todo.length > 0 && <div className="notice small">Add your {todo.join(', ')} below for accurate matches.</div>}
-        {!matches ? <p className="muted">Checking programmes…</p> : (
-          <div className="matches">{matches.map((m) => <MatchCard key={m.program.id} match={m} />)}</div>
-        )}
-      </section>
-
-      {/* ---------- Profile ---------- */}
-      {!form ? <p className="muted">Loading your details…</p> : (
-        <form className="stack" onSubmit={save}>
-          <div>
-            <h2 className="display-xs">About you</h2>
-            <p className="small muted">The more you tell us, the sharper the pre-screening. Saved to your account.</p>
           </div>
+          {todo.length > 0 && <div className="notice small">Add your {todo.join(', ')} for accurate match results on each programme.</div>}
 
           <fieldset className="card form-section">
             <legend>Goal</legend>
@@ -311,8 +290,8 @@ export default function Account() {
           </fieldset>
 
           <div className="save-bar">
-            <button className="btn primary" disabled={status === 'saving'}>{status === 'saving' ? 'Saving…' : 'Save and update matches'}</button>
-            {status === 'saved' && <span className="saved">✓ Saved. Matches updated</span>}
+            <button className="btn primary" disabled={status === 'saving'}>{status === 'saving' ? 'Saving…' : 'Save'}</button>
+            {status === 'saved' && <span className="saved">✓ Saved</span>}
             {status && !['saving', 'saved'].includes(status) && <span className="error small">{status}</span>}
           </div>
         </form>
@@ -320,8 +299,8 @@ export default function Account() {
 
       <div className="card row between wrap">
         <div>
-          <h3>Browse all programmes</h3>
-          <p className="small muted">Your answers are filled in on every programme page.</p>
+          <h3>See how you match</h3>
+          <p className="small muted">Open any programme to see your match score and what to fix.</p>
         </div>
         <Link to="/programs" className="btn primary">Browse universities →</Link>
       </div>

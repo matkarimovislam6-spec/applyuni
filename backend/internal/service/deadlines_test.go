@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 func day(s string) time.Time {
@@ -138,5 +140,31 @@ func TestMatchesForStudent(t *testing.T) {
 	// Padova's only round has closed, so it must sort last with verdict "closed"
 	if last := ms[len(ms)-1]; last.Verdict != "closed" || last.Program.University != "University of Padova" {
 		t.Errorf("expected Padova closed last, got %s / %s", last.Program.University, last.Verdict)
+	}
+}
+
+// Each programme page gets its own result, even outside the chosen degree level.
+func TestMatchProgramAnyLevel(t *testing.T) {
+	ctx := context.Background()
+	s, _ := newTestService(t)
+	sess, _ := s.Register(ctx, RegisterInput{Username: "kamola", Password: "supersecret1"})
+	c, _ := s.Tokens.Parse(sess.Token)
+	me, _ := s.Me(ctx, c)
+	s.UpdateProfile(ctx, c, *me.StudentID, []byte(`{"degree_target":"master","education_level":"high_school","school_years":11}`))
+	progs, _ := s.ListPrograms(ctx, "IT", "")
+	for _, p := range progs {
+		m, err := s.MatchProgram(ctx, c, p.ID)
+		if err != nil {
+			t.Fatalf("%s: %v", p.Name, err)
+		}
+		if p.Degree == "master" && m.Verdict != "not_eligible" && m.Verdict != "closed" {
+			t.Errorf("high-school student → %s master's should be not eligible, got %s", p.Name, m.Verdict)
+		}
+		if p.Degree == "bachelor" && m.Verdict != "not_eligible" && m.Verdict != "closed" {
+			t.Errorf("11 years of school → %s bachelor's should be blocked, got %s", p.Name, m.Verdict)
+		}
+	}
+	if _, err := s.MatchProgram(ctx, c, uuid.New()); err == nil {
+		t.Error("unknown programme should fail")
 	}
 }

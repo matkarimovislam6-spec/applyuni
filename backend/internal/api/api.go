@@ -62,6 +62,7 @@ func New(svc *service.Service, tokens *auth.Issuer, corsOrigin string, maxUpload
 			r.Use(tokens.Middleware)
 			r.Get("/me", a.me)
 			r.Get("/me/matches", a.matches)
+			r.Get("/me/matches/{id}", a.matchProgram)
 			r.Get("/students", a.listStudents)
 			r.Post("/students", a.createStudent)
 			r.Get("/students/{id}", a.getStudent)
@@ -220,6 +221,18 @@ func (a *API) matches(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, m)
+}
+
+func (a *API) matchProgram(w http.ResponseWriter, r *http.Request) {
+	id, err := idParam(r)
+	if err == nil {
+		var m *service.Match
+		if m, err = a.svc.MatchProgram(r.Context(), claims(r), id); err == nil {
+			writeJSON(w, http.StatusOK, m)
+			return
+		}
+	}
+	a.fail(w, r, err)
 }
 
 func (a *API) listPrograms(w http.ResponseWriter, r *http.Request) {

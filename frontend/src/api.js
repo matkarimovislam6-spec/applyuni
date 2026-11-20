@@ -40,5 +40,5 @@ export const api = {
   // the logged-in student's saved data
   student: (id) => request('GET', `/students/${id}`),
   saveProfile: (id, profile) => request('PUT', `/students/${id}/profile`, profile),
-  matches: () => request('GET', '/me/matches'),
+  matchProgram: (programId) => request('GET', `/me/matches/${programId}`),
 };

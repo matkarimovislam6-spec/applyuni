@@ -234,6 +234,10 @@ func eligibility(p Profile, prog Program) (Check, bool) {
 		return c, true
 	}
 	// bachelor: Italy's 12-year schooling rule
+	if p.EducationLevel == "bachelor_done" || p.EducationLevel == "master_done" {
+		c.Status, c.Detail = Met, "You already have a degree; a second bachelor's is possible but check whether a master's fits you better."
+		return c, true
+	}
 	switch {
 	case p.SchoolYears == 0:
 		c.Status, c.Detail, c.Fix = Unknown, "We don't know how many years of school you finished.", "Fill in 'Years of school completed'."

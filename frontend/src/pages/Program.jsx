@@ -25,7 +25,7 @@ export default function Program() {
   const [match, setMatch] = useState(null);
   useEffect(() => {
     if (!user) return setMatch(null);
-    api.matches().then((ms) => setMatch(ms.find((m) => m.program.id === id) || null)).catch(() => setMatch(null));
+    api.matchProgram(id).then(setMatch).catch(() => setMatch(null));
   }, [user, id, saved]);
 
   // Recompute the checklist whenever an answer changes.
@@ -75,9 +75,6 @@ export default function Program() {
           </div>
           <CheckList checks={match.checks} />
         </section>
-      )}
-      {user && !match && data && (
-        <p className="small muted">This is a {data.degree === 'master' ? "master's" : "bachelor's"} programme; your matches cover the level you chose in <Link to="/account">your profile</Link>.</p>
       )}
       {!user && (
         <div className="notice small"><Link to="/signup" state={{ from: `/programs/${id}` }}>Create an account</Link> to see how well you match this programme and what you'd need to fix.</div>
