@@ -144,3 +144,33 @@ func TestEntryTestAndPortfolio(t *testing.T) {
 		t.Errorf("having a portfolio should raise the score (%d vs %d)", with.Score, r.Score)
 	}
 }
+
+func TestGermanyAndUSA(t *testing.T) {
+	deBsc := Program{Country: "DE", Degree: "bachelor", Language: "en", Meta: Meta{Field: "computer_science"}}
+	if c := find(Evaluate(Profile{SchoolYears: 11}, deBsc, openSoon, now), "eligibility"); c.Status != Blocker || c.Fix == "" {
+		t.Errorf("Germany bachelor straight from Uzbek school should block with a Studienkolleg fix: %+v", c)
+	}
+	if c := find(Evaluate(Profile{SchoolYears: 11, CompletedUniYears: 2}, deBsc, openSoon, now), "eligibility"); c.Status != Warning {
+		t.Errorf("Germany bachelor after 2 uni years should be a warning (check DAAD): %+v", c)
+	}
+	usBsc := Program{Country: "US", Degree: "bachelor", Language: "en", Meta: Meta{Field: "computer_science", MinGPAPct: 75, MinGPANote: "ASU asks for a 3.00 GPA."}}
+	if c := find(Evaluate(Profile{SchoolYears: 11}, usBsc, openSoon, now), "eligibility"); c.Status != Met {
+		t.Errorf("US bachelor after 11 years should be eligible: %+v", c)
+	}
+	r := Evaluate(Profile{SchoolYears: 11, SchoolGrade: "3.5/5"}, usBsc, openSoon, now) // 70% < 75%
+	if c := find(r, "grades"); c.Status != Blocker || r.Verdict != "not_eligible" {
+		t.Errorf("below ASU's verified minimum GPA should block: %+v", c)
+	}
+	// US/German norm is IELTS 6.5, so 6.0 is just below
+	usMsc := Program{Country: "US", Degree: "master", Language: "en", Meta: Meta{Field: "computer_science"}}
+	if c := find(Evaluate(Profile{EducationLevel: "bachelor_done", EnglishTest: "IELTS", EnglishScore: "6.0"}, usMsc, openSoon, now), "language"); c.Status != Warning {
+		t.Errorf("IELTS 6.0 vs US norm 6.5 should warn: %+v", c)
+	}
+	// German-taught programme checks German, not English
+	deGerman := Program{Country: "DE", Degree: "master", Language: "de", Meta: Meta{Field: "computer_science"}}
+	for lvl, want := range map[string]Status{"": Action, "B2": Warning, "C1": Met} {
+		if c := find(Evaluate(Profile{EducationLevel: "bachelor_done", GermanLevel: lvl}, deGerman, openSoon, now), "language"); c.Status != want || c.Label != "German" {
+			t.Errorf("German %q: %+v, want %s", lvl, c, want)
+		}
+	}
+}

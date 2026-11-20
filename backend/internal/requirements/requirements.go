@@ -121,6 +121,8 @@ func conditionHolds(cond string, p Profile, prog Program) bool {
 		return p.SchoolYears > 0 && p.SchoolYears < 12
 	case "english_taught":
 		return prog.Language == "en"
+	case "german_taught":
+		return prog.Language == "de"
 	case "wants_scholarship":
 		return p.WantsScholarship
 	case "documents_not_in_english":

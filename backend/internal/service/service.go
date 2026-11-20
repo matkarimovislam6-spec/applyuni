@@ -238,6 +238,7 @@ type ProgramInfo struct {
 	Deadline       *time.Time `json:"deadline"`
 	SourceURL      *string    `json:"source_url"`
 	VerifiedAt     *time.Time `json:"verified_at"`
+	Currency       string     `json:"currency"`
 	FeeNote        *string    `json:"fee_note"`
 	FeeSourceURL   *string    `json:"fee_source_url"`
 	CallNote       *string    `json:"call_note"`
@@ -251,14 +252,14 @@ type ProgramInfo struct {
 
 const programSelect = `SELECT p.id, p.name, p.degree, p.language, u.name, coalesce(u.city, ''), c.code, coalesce(u.website, ''), u.portal,
 	p.tuition_eur_year, p.application_fee_eur, p.deadline, p.source_url, p.verified_at,
-	p.fee_note, p.fee_source_url, p.call_note, p.call_source_url, p.requirements, c.rules
+	p.fee_currency, p.fee_note, p.fee_source_url, p.call_note, p.call_source_url, p.requirements, c.rules
 	FROM programs p JOIN universities u ON u.id = p.university_id JOIN countries c ON c.code = u.country_code`
 
 func scanProgram(row interface{ Scan(...any) error }) (*ProgramInfo, error) {
 	p := &ProgramInfo{}
 	err := row.Scan(&p.ID, &p.Name, &p.Degree, &p.Language, &p.University, &p.City, &p.Country, &p.Website, &p.Portal,
 		&p.TuitionEURYear, &p.ApplicationFee, &p.Deadline, &p.SourceURL, &p.VerifiedAt,
-		&p.FeeNote, &p.FeeSourceURL, &p.CallNote, &p.CallSourceURL, &p.Requirements, &p.CountryRules)
+		&p.Currency, &p.FeeNote, &p.FeeSourceURL, &p.CallNote, &p.CallSourceURL, &p.Requirements, &p.CountryRules)
 	return p, err
 }
 

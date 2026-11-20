@@ -7,20 +7,21 @@ import { DeadlineBadge } from '../Deadline.jsx';
 export default function Programs() {
   const [programs, setPrograms] = useState(null);
   const [degree, setDegree] = useState('');
+  const [country, setCountry] = useState('');
   const [openOnly, setOpenOnly] = useState(false);
   const [q, setQ] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
-    api.programs('IT', degree).then(setPrograms).catch((e) => setError(e.message));
-  }, [degree]);
+    api.programs(country, degree).then(setPrograms).catch((e) => setError(e.message));
+  }, [country, degree]);
 
   const shown = useMemo(() => {
     const s = q.trim().toLowerCase();
-    const rank = { open: 0, upcoming: 1, not_published: 2, closed: 3 };
+    const rank = { open: 0, due: 0, upcoming: 1, not_published: 2, closed: 3 };
     return (programs || [])
       .filter((p) => !s || `${p.name} ${p.university} ${p.city}`.toLowerCase().includes(s))
-      .filter((p) => !openOnly || p.deadline_status?.state === 'open')
+      .filter((p) => !openOnly || ['open', 'due'].includes(p.deadline_status?.state))
       // most urgent first: open rounds by days left, then upcoming, unknown, closed
       .sort((a, b) => {
         const sa = a.deadline_status, sb = b.deadline_status;
@@ -33,12 +34,17 @@ export default function Programs() {
       <section className="page-head">
         <Ascii art="duomo" className="float a2" />
         <div className="container">
-          <p className="mono-label">Catalogue · Italy</p>
+          <p className="mono-label">Catalogue · Italy · Germany · USA</p>
           <h1 className="display-sm">Find your <em>programme</em></h1>
           <p className="lead">Pick one to see every document you need for it — tailored to you, in under a minute.</p>
         </div>
       </section>
       <div className="container stack">
+        <div className="chips country-chips">
+          {[['', 'All countries'], ['IT', 'Italy'], ['DE', 'Germany'], ['US', 'USA']].map(([v, l]) => (
+            <button key={l} className={`chip ${country === v ? 'on' : ''}`} onClick={() => setCountry(v)} aria-pressed={country === v}>{l}</button>
+          ))}
+        </div>
         <div className="filters">
           <input className="grow" placeholder="Search programme, university or city…" value={q} onChange={(e) => setQ(e.target.value)} />
           <div className="chips">
@@ -55,7 +61,7 @@ export default function Programs() {
             <Link key={p.id} to={`/programs/${p.id}`} className="program">
               <div>
                 <span className="program-name">{p.name}</span>
-                <span className="program-meta">{p.university} · {p.city}</span>
+                <span className="program-meta">{p.university} · {p.city}, {{ IT: 'Italy', DE: 'Germany', US: 'USA' }[p.country]}</span>
               </div>
               <div className="program-tags">
                 <DeadlineBadge status={p.deadline_status} />

@@ -34,6 +34,7 @@ type Profile struct {
 	EnglishScore      string   `json:"english_score"`
 	EnglishDate       string   `json:"english_date"`  // YYYY-MM
 	ItalianLevel      string   `json:"italian_level"` // A1..C2
+	GermanLevel       string   `json:"german_level"`  // A1..C2
 	OtherLanguages    []Lang   `json:"other_languages"`
 	SAT               int      `json:"sat_score"`
 	GRE               int      `json:"gre_score"`
@@ -54,6 +55,7 @@ type Lang struct {
 
 // Programme facts the matcher needs (from programs.requirements JSON + catalogue).
 type Program struct {
+	Country  string // IT | DE | US
 	Degree   string
 	Language string // en | it
 	Meta     Meta
@@ -65,6 +67,7 @@ type Meta struct {
 	AdjacentFields   []string `json:"adjacent_fields"`   // master: may qualify after a credit check
 	EnglishMinIELTS  float64  `json:"english_min_ielts"` // only when verified
 	MinGPAPct        float64  `json:"min_gpa_pct"`       // only when verified
+	MinGPANote       string   `json:"min_gpa_note"`
 	EntryTest        string   `json:"entry_test"`
 	EntryTestSource  string   `json:"entry_test_source"`
 	NeedsPortfolio   bool     `json:"needs_portfolio"`
@@ -233,11 +236,32 @@ func eligibility(p Profile, prog Program) (Check, bool) {
 		}
 		return c, true
 	}
-	// bachelor: Italy's 12-year schooling rule
 	if p.EducationLevel == "bachelor_done" || p.EducationLevel == "master_done" {
 		c.Status, c.Detail = Met, "You already have a degree; a second bachelor's is possible but check whether a master's fits you better."
 		return c, true
 	}
+	switch prog.Country {
+	case "DE":
+		// Most Uzbek school certificates don't give direct entry (DAAD admission database).
+		if p.CompletedUniYears >= 1 {
+			c.Status = Warning
+			c.Detail = fmt.Sprintf("With %d completed university year(s) you may get direct entry, depending on your subject and years.", p.CompletedUniYears)
+			c.Fix = "Check your exact case in the DAAD admission database before applying."
+			return c, true
+		}
+		c.Status = Blocker
+		c.Detail = "Most Uzbek school certificates don't give direct entry to a German bachelor's."
+		c.Fix = "Do a Studienkolleg (foundation year) and its Feststellungsprüfung, or complete university study in a related subject first."
+		return c, true
+	case "US":
+		if p.SchoolYears == 0 && p.EducationLevel == "" {
+			c.Status, c.Detail, c.Fix = Unknown, "We don't know whether you've finished school yet.", "Fill in your education in your profile."
+			return c, true
+		}
+		c.Status, c.Detail = Met, "US universities admit students who have completed (or are finishing) secondary school."
+		return c, true
+	}
+	// Italy: 12 years of schooling
 	switch {
 	case p.SchoolYears == 0:
 		c.Status, c.Detail, c.Fix = Unknown, "We don't know how many years of school you finished.", "Fill in 'Years of school completed'."
@@ -347,6 +371,10 @@ func grades(p Profile, prog Program) (Check, float64) {
 	if prog.Meta.MinGPAPct > 0 && pct*100 < prog.Meta.MinGPAPct {
 		c.Status = Blocker
 		c.Detail = fmt.Sprintf("Your %s (%d%%) is below this programme's minimum (%.0f%%).", what, pc, prog.Meta.MinGPAPct)
+		if prog.Meta.MinGPANote != "" {
+			c.Detail += " " + prog.Meta.MinGPANote
+		}
+		c.Fix = "Look at programmes without a minimum, or improve your grades if you're still studying."
 		return c, 0
 	}
 	switch {
@@ -406,6 +434,21 @@ func ieltsEquivalent(test, score string) (float64, bool) {
 }
 
 func language(p Profile, prog Program, now time.Time) (Check, float64) {
+	if prog.Language == "de" {
+		c := Check{Key: "language", Label: "German"}
+		lvl := strings.ToUpper(p.GermanLevel)
+		switch {
+		case lvl == "":
+			c.Status, c.Detail, c.Fix = Action, "This programme is taught in German.", "German-taught programmes usually ask for C1 (TestDaF, DSH-2 or Goethe C1)."
+			return c, 0.2
+		case lvl >= "C1":
+			c.Status, c.Detail = Met, "Your German ("+lvl+") meets the usual C1 requirement."
+			return c, 1
+		default:
+			c.Status, c.Detail, c.Fix = Warning, "German "+lvl+" is below the C1 most German-taught programmes require.", "Aim for TestDaF, DSH-2 or Goethe C1 before applying."
+			return c, 0.35
+		}
+	}
 	if prog.Language == "it" {
 		c := Check{Key: "language", Label: "Italian"}
 		lvl := strings.ToUpper(p.ItalianLevel)
@@ -424,7 +467,7 @@ func language(p Profile, prog Program, now time.Time) (Check, float64) {
 	c := Check{Key: "language", Label: "English"}
 	if p.EnglishTest == "" {
 		c.Status = Action
-		c.Detail = "English-taught programmes ask for a certificate (usually B2, about IELTS 6.0)."
+		c.Detail = "English-taught programmes ask for a certificate (usually about IELTS 6.0–6.5)."
 		c.Fix = "Book IELTS or TOEFL now: results take up to 2 weeks."
 		return c, 0.2
 	}
@@ -440,8 +483,14 @@ func language(p Profile, prog Program, now time.Time) (Check, float64) {
 		c.Fix = "Retake the test before applying."
 		return c, 0.3
 	}
-	min := 6.0
-	minNote := "Most Italian English-taught programmes ask for B2 (about IELTS 6.0); this programme's exact minimum isn't verified yet."
+	min, where := 6.0, "Italian"
+	switch prog.Country {
+	case "DE":
+		min, where = 6.5, "German"
+	case "US":
+		min, where = 6.5, "US"
+	}
+	minNote := fmt.Sprintf("Most %s universities ask for about IELTS %.1f (or the TOEFL/Duolingo equivalent); this programme's exact minimum isn't verified yet.", where, min)
 	if prog.Meta.EnglishMinIELTS > 0 {
 		min = prog.Meta.EnglishMinIELTS
 		minNote = fmt.Sprintf("This programme asks for IELTS %.1f or equivalent.", min)
@@ -469,7 +518,7 @@ func language(p Profile, prog Program, now time.Time) (Check, float64) {
 func deadline(dl Deadline) (Check, float64) {
 	c := Check{Key: "deadline", Label: "Deadline"}
 	switch dl.State {
-	case "open":
+	case "open", "due":
 		if dl.DaysLeft != nil && *dl.DaysLeft <= 14 {
 			c.Status, c.Detail, c.Fix = Action, fmt.Sprintf("Open now, closes %s (%d days left).", dl.Closes, *dl.DaysLeft), "Apply this week."
 			return c, 0.9

@@ -24,7 +24,7 @@ export const FIELDS = [
 const EMPTY = {
   degree_target: 'bachelor', education_level: '', school_years: 11, completed_university_years: 0, school_grade: '',
   university: '', major: '', major_name: '', gpa: '', graduation_year: '',
-  english_test: '', english_score: '', english_date: '', italian_level: '', other_languages: [],
+  english_test: '', english_score: '', english_date: '', italian_level: '', german_level: '', other_languages: [],
   sat_score: '', gre_score: '', gmat_score: '', work_years: 0, has_portfolio: false,
   interests: [], budget_eur_year: '', documents_language: 'uz', wants_scholarship: true,
 };
@@ -128,7 +128,7 @@ export default function Account() {
               </label>
               <label className="check">
                 <input type="checkbox" checked={!!form.wants_scholarship} onChange={(e) => set('wants_scholarship', e.target.checked)} />
-                I want a regional (DSU) scholarship
+                I want a regional (DSU) scholarship (Italy)
               </label>
             </div>
             <div className="interests">
@@ -233,6 +233,12 @@ export default function Account() {
               </label>
               <label>Italian level
                 <select value={form.italian_level} onChange={(e) => set('italian_level', e.target.value)}>
+                  <option value="">None</option>
+                  {['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].map((l) => <option key={l}>{l}</option>)}
+                </select>
+              </label>
+              <label>German level
+                <select value={form.german_level} onChange={(e) => set('german_level', e.target.value)}>
                   <option value="">None</option>
                   {['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].map((l) => <option key={l}>{l}</option>)}
                 </select>

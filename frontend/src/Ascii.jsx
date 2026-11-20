@@ -125,7 +125,51 @@ function espresso() {
   ];
 }
 
-const ART = { duomo, pizza, pisa, espresso };
+
+// Brandenburg Gate: quadriga on top, attic, six Doric columns, five passages.
+function brandenburg() {
+  const cols = 6, gap = 5;
+  const inner = cols + (cols - 1) * gap; // 31
+  const W = inner + 4;
+  const center = (str) => r(' ', Math.floor((W - str.length) / 2)) + str;
+  const colRow = (fill) => '| ' + Array.from({ length: cols }, () => '|').join(r(fill, gap)) + ' |';
+  return [
+    center('_   _   _   _'),
+    center('_/)\\_/)\\_/)\\_/)'),
+    center('|_______________|'),
+    ' ' + r('_', W - 2),
+    '|' + r('=', W - 2) + '|',
+    '|' + r('_', W - 2) + '|',
+    colRow(' '),
+    colRow(' '),
+    colRow(' '),
+    colRow(' '),
+    colRow(' '),
+    '|_' + Array.from({ length: cols }, () => '|').join(r('_', gap)) + '_|',
+    r('=', W),
+  ];
+}
+
+// Statue of Liberty: torch raised on her right, crown, robe, tablet, pedestal.
+function liberty() {
+  return [
+    '             ,',
+    '            (_)',
+    '            |#|',
+    '       \\|/  /',
+    '      --@--/',
+    '       /|\\/',
+    '      / | \\',
+    '  []-/  |  \\',
+    '    /___|___\\',
+    '     |     |',
+    '     [_____]',
+    '    [_______]',
+    '   [_________]',
+  ];
+}
+
+const ART = { duomo, pizza, pisa, espresso, brandenburg, liberty };
 
 export default function Ascii({ art = 'duomo', className = '', style }) {
   const draw = ART[art] || duomo;

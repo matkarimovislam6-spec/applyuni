@@ -21,12 +21,12 @@ type Deadline struct {
 	SourceURL    string     `json:"source_url"`
 	VerifiedAt   time.Time  `json:"verified_at"`
 	Note         *string    `json:"note"`
-	State        string     `json:"state"` // open | upcoming | closed (official rounds); reference (previous_year)
+	State        string     `json:"state"` // open | due (closing date known, opening date not) | upcoming | closed; reference (previous_year)
 }
 
 // DeadlineStatus summarises the rounds for screening: is it open, and when is the next deadline?
 type DeadlineStatus struct {
-	State    string    `json:"state"` // open | upcoming | closed | not_published
+	State    string    `json:"state"` // open | due | upcoming | closed | not_published
 	Next     *Deadline `json:"next"`  // the round that is open or opens next
 	DaysLeft *int      `json:"days_left"`
 	LastYear *Deadline `json:"last_year"` // last cycle's deadline, for reference
@@ -68,6 +68,8 @@ func summarize(ds []Deadline, at time.Time) DeadlineStatus {
 			d.State = "closed"
 		case d.OpensOn != nil && at.Before(startOfDay(*d.OpensOn)):
 			d.State = "upcoming"
+		case d.OpensOn == nil:
+			d.State = "due" // the university states only the closing date
 		default:
 			d.State = "open"
 		}
@@ -76,7 +78,7 @@ func summarize(ds []Deadline, at time.Time) DeadlineStatus {
 		return st
 	}
 	// earliest open round, else earliest upcoming round
-	for _, want := range []string{"open", "upcoming"} {
+	for _, want := range []string{"open", "due", "upcoming"} {
 		for i := range ds {
 			if ds[i].State == want && (st.Next == nil || ds[i].ClosesOn.Before(st.Next.ClosesOn)) {
 				st.Next = &ds[i]

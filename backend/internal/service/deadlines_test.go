@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/matkarimovislam6-spec/applyuni/backend/internal/requirements"
 )
 
 func day(s string) time.Time {
@@ -59,6 +61,13 @@ func TestSummarize(t *testing.T) {
 		if st.DaysLeft == nil || *st.DaysLeft != c.days {
 			t.Errorf("%s: days left %v, want %d", c.name, st.DaysLeft, c.days)
 		}
+	}
+}
+
+func TestSummarizeDueWithoutOpeningDate(t *testing.T) {
+	st := summarize([]Deadline{{Round: "Winter", ClosesOn: day("2027-03-01"), Kind: "official"}}, at("2026-11-20"))
+	if st.State != "due" || st.DaysLeft == nil || *st.DaysLeft != 102 {
+		t.Fatalf("got %+v", st)
 	}
 }
 
@@ -166,5 +175,50 @@ func TestMatchProgramAnyLevel(t *testing.T) {
 	}
 	if _, err := s.MatchProgram(ctx, c, uuid.New()); err == nil {
 		t.Error("unknown programme should fail")
+	}
+}
+
+func TestGermanyUSACatalogue(t *testing.T) {
+	s, _ := newTestService(t)
+	ctx := context.Background()
+	for country, want := range map[string]int{"DE": 2, "US": 3, "IT": 10} {
+		progs, err := s.ListPrograms(ctx, country, "")
+		if err != nil || len(progs) != want {
+			t.Fatalf("%s: %d programmes (%v), want %d", country, len(progs), err, want)
+		}
+	}
+	us, _ := s.ListPrograms(ctx, "US", "")
+	byName := map[string]*ProgramInfo{}
+	for _, p := range us {
+		byName[p.University] = p
+		if p.Currency != "USD" {
+			t.Errorf("%s should be priced in USD, got %s", p.University, p.Currency)
+		}
+	}
+	if u := byName["University of Illinois Urbana-Champaign"]; u == nil || *u.ApplicationFee != 90 || len(u.Deadlines) != 1 {
+		t.Fatalf("UIUC data wrong: %+v", u)
+	}
+	de, _ := s.ListPrograms(ctx, "DE", "")
+	for _, p := range de {
+		if p.Currency != "EUR" || len(p.Deadlines) != 1 {
+			t.Errorf("%s: currency %s, %d deadlines", p.University, p.Currency, len(p.Deadlines))
+		}
+	}
+	// country rules: German master's checklist includes the GRE for RWTH, the US list asks for proof of funds
+	for _, p := range append(de, us...) {
+		cl, err := s.PublicChecklist(ctx, p.ID, requirements.Profile{SchoolYears: 11, DocumentsLanguage: "uz"})
+		if err != nil || len(cl.Checklist.Items) < 5 {
+			t.Fatalf("%s checklist: %v", p.University, err)
+		}
+		has := map[string]bool{}
+		for _, it := range cl.Checklist.Items {
+			has[it.Type] = true
+		}
+		if p.University == "RWTH Aachen University" && !has["gre"] {
+			t.Error("RWTH checklist should include the GRE")
+		}
+		if p.Country == "US" && !has["financial_documents"] {
+			t.Errorf("%s checklist should include proof of funds", p.University)
+		}
 	}
 }

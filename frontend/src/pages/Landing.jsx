@@ -4,7 +4,7 @@ import { api } from '../api.js';
 import Ascii from '../Ascii.jsx';
 import Waitlist from '../Waitlist.jsx';
 
-const CITIES = ['Milan', 'Bologna', 'Rome', 'Padova', 'Turin'];
+const CITIES = ['Milan', 'Munich', 'the USA', 'Rome', 'Aachen', 'Bologna'];
 
 function RotatingWord({ words, interval = 2200 }) {
   const [i, setI] = useState(0);
@@ -25,10 +25,10 @@ export default function Landing() {
       <section className="hero">
         <Ascii art="duomo" className="float a1" />
         <Ascii art="pizza" className="float a2" />
-        <Ascii art="espresso" className="float a3" />
-        <Ascii art="pisa" className="float a4" />
+        <Ascii art="brandenburg" className="float a3" />
+        <Ascii art="liberty" className="float a4" />
         <div className="container hero-inner">
-          <p className="mono-label">Italy · bachelor & master · 2027 intake</p>
+          <p className="mono-label">Italy · Germany · USA · bachelor & master</p>
           <h1 className="display">
             Study in <RotatingWord words={CITIES} />
             <br />
@@ -36,7 +36,7 @@ export default function Landing() {
           </h1>
           <p className="lead">
             Agencies charge students <em>thousands of dollars</em> for paperwork you can do yourself.
-            We tell you every document you need, check them with AI, and submit after you approve.
+            Whether it's Italy, Germany or the USA, we tell you every document you need, check them with AI, and submit after you approve.
           </p>
           <HeroDemo />
         </div>
@@ -45,9 +45,16 @@ export default function Landing() {
       <section className="band">
         <div className="container band-inner">
           <span className="mono-label">Universities in the catalogue</span>
-          <div className="logos">
-            {['Politecnico di Milano', 'Università di Bologna', 'Sapienza Roma', 'Università di Padova', 'Politecnico di Torino', 'Università degli Studi di Milano'].map((u) => (
-              <span key={u}>{u}</span>
+          <div className="logo-groups">
+            {[
+              ['Italy', ['Politecnico di Milano', 'Bologna', 'Sapienza Roma', 'Padova', 'Politecnico di Torino', 'Statale Milano']],
+              ['Germany', ['RWTH Aachen', 'TU Munich']],
+              ['USA', ['Purdue', 'Arizona State', 'Illinois Urbana-Champaign']],
+            ].map(([c, us]) => (
+              <div key={c} className="logo-group">
+                <span className="mono-label">{c}</span>
+                <div className="logos">{us.map((u) => <span key={u}>{u}</span>)}</div>
+              </div>
             ))}
           </div>
         </div>
@@ -115,8 +122,10 @@ export default function Landing() {
         <h2 className="display-sm">Things students ask us</h2>
         <div className="faq-list">
           {[
-            ['Do I really not need an agency?', 'No. The process is long but not hard: university application, Universitaly pre-enrolment, visa and the DSU scholarship. We walk you through each step.'],
-            ['I finished 11 years of school. Can I apply for a bachelor?', 'Italy requires 12 years of schooling. With 11, you usually need at least one completed year of university or a recognised foundation year. The checklist adds this for you.'],
+            ['Do I really not need an agency?', 'No. The process is long but not hard: the university application, then the visa steps for your country. We walk you through each one.'],
+            ['I finished 11 years of school. Can I apply for a bachelor?', 'It depends on the country. Italy needs 12 years, so with 11 you need a completed university year or a foundation year. Germany usually needs a Studienkolleg (foundation year) or completed university study. US universities accept a finished secondary school certificate. Your profile shows which applies to you.'],
+            ['What do US universities need that Europe doesn\'t?', 'Essays, recommendation letters and proof of funds for your Form I-20. SAT or ACT is optional at many universities. Deadlines come earlier too: many close between December and January.'],
+            ['Is studying in Germany really free?', 'Most public universities charge no tuition, but some states and universities charge non-EU students, and you need a blocked account for the visa. Each programme page shows the details we have verified.'],
             ['Will you write my motivation letter?', 'No. Universities can reject ghost-written letters. Our AI gives feedback on your own draft.'],
             ['Are my documents safe?', 'Every file is encrypted with its own key before it is stored, and you can delete everything at any time.'],
           ].map(([q, a]) => (
@@ -140,9 +149,9 @@ function HeroDemo() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    api.programs('IT').then((p) => {
+    api.programs('').then((p) => {
       setPrograms(p);
-      setProgramId(p.find((x) => x.degree === 'bachelor')?.id || p[0]?.id || '');
+      setProgramId((p.find((x) => x.country === 'IT' && x.degree === 'bachelor') || p[0])?.id || '');
     }).catch((e) => setError(e.message));
   }, []);
 
@@ -173,7 +182,11 @@ function HeroDemo() {
           <>
             <h3>Where would you like to study?</h3>
             <select className="big-input" value={programId} onChange={(e) => setProgramId(e.target.value)}>
-              {programs.map((p) => <option key={p.id} value={p.id}>{p.name} — {p.university} ({p.degree})</option>)}
+              {[['IT', 'Italy'], ['DE', 'Germany'], ['US', 'USA']].map(([c, label]) => (
+                <optgroup key={c} label={label}>
+                  {programs.filter((p) => p.country === c).map((p) => <option key={p.id} value={p.id}>{p.name} — {p.university} ({p.degree})</option>)}
+                </optgroup>
+              ))}
             </select>
             <div className="demo-actions">
               <span className="hint">click here →</span>
@@ -195,14 +208,25 @@ function HeroDemo() {
                 </div>
               </div>
             )}
-            <div className="q">
-              <span>Do you want a DSU scholarship?</span>
-              <div className="chips">
-                {[[true, 'Yes, please'], [false, 'No']].map(([v, l]) => (
-                  <button key={l} className={`chip ${profile.wants_scholarship === v ? 'on' : ''}`} onClick={() => setProfile({ ...profile, wants_scholarship: v })}>{l}</button>
-                ))}
+            {program?.country === 'IT' ? (
+              <div className="q">
+                <span>Do you want a DSU scholarship?</span>
+                <div className="chips">
+                  {[[true, 'Yes, please'], [false, 'No']].map(([v, l]) => (
+                    <button key={l} className={`chip ${profile.wants_scholarship === v ? 'on' : ''}`} onClick={() => setProfile({ ...profile, wants_scholarship: v })}>{l}</button>
+                  ))}
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="q">
+                <span>What language are your documents in?</span>
+                <div className="chips">
+                  {[['uz', 'Uzbek'], ['ru', 'Russian'], ['en', 'English'], ['mixed', 'Mixed']].map(([v, l]) => (
+                    <button key={v} className={`chip ${profile.documents_language === v ? 'on' : ''}`} onClick={() => setProfile({ ...profile, documents_language: v })}>{l}</button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="demo-actions">
               <span className="hint">almost →</span>
               <button className="btn primary" onClick={build}>Build my checklist</button>

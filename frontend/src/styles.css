@@ -117,7 +117,7 @@ em { font-style: italic; }
 .float { position: absolute; z-index: 0; animation: drift 14s ease-in-out infinite alternate; }
 .a1 { top: 36px; left: 1.5%; }
 .a2 { top: 44px; right: 2.5%; animation-delay: -4s; }
-.a3 { top: 50%; left: 6%; animation-delay: -8s; }
+.a3 { top: 50%; left: 1%; animation-delay: -8s; }
 .a4 { top: 49%; right: 5%; animation-delay: -2s; }
 @keyframes drift { to { transform: translate(10px, -14px); } }
 @media (prefers-reduced-motion: reduce) {
@@ -428,3 +428,11 @@ input[aria-invalid='true'] { border-color: var(--bad); }
   .match-head { flex-wrap: wrap; }
   .match-title .program-name { font-size: 1.2rem; }
 }
+
+/* multi-country */
+.logo-groups { display: flex; gap: 34px; flex-wrap: wrap; }
+.logo-group { display: flex; flex-direction: column; gap: 6px; }
+.logo-group .logos { gap: 18px; }
+.country-chips { margin-bottom: 2px; }
+.dl-badge.due { background: var(--ok-bg); color: var(--ok); border-color: transparent; }
+.dl-badge.due.urgent { background: var(--clay); color: var(--clay-ink); }

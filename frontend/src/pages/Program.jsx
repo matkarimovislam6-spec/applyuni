@@ -52,7 +52,7 @@ export default function Program() {
     <main className="container section stack">
       <Link to="/programs" className="mono-label back">← All programmes</Link>
       <div>
-        <p className="mono-label">{data.university} · {data.city}</p>
+        <p className="mono-label">{data.university} · {data.city}, {{ IT: 'Italy', DE: 'Germany', US: 'USA' }[data.country]}</p>
         <h1 className="display-sm">{data.name}</h1>
         <p className="lead">{data.degree === 'bachelor' ? 'Bachelor' : 'Master'} · {data.language === 'en' ? 'taught in English' : 'taught in Italian'}</p>
       </div>
@@ -124,10 +124,12 @@ export default function Program() {
               <option value="mixed">Mixed (some English, some Uzbek or Russian)</option>
             </select>
           </label>
-          <label className="check">
-            <input type="checkbox" checked={profile.wants_scholarship} onChange={(e) => set('wants_scholarship', e.target.checked)} />
-            I want a regional (DSU) scholarship
-          </label>
+          {data.country === 'IT' && (
+            <label className="check">
+              <input type="checkbox" checked={!!profile.wants_scholarship} onChange={(e) => set('wants_scholarship', e.target.checked)} />
+              I want a regional (DSU) scholarship
+            </label>
+          )}
         </section>
 
         <section className="stack">

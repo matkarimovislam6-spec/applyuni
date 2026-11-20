@@ -33,6 +33,7 @@ func (s *Service) ownProfile(ctx context.Context, c *auth.Claims) (matching.Prof
 
 func evaluate(p matching.Profile, prog *ProgramInfo, at time.Time) Match {
 	return Match{Program: prog, Result: matching.Evaluate(p, matching.Program{
+		Country:  prog.Country,
 		Degree:   prog.Degree,
 		Language: prog.Language,
 		Meta:     matching.ParseMeta(json.RawMessage(prog.Requirements)),
