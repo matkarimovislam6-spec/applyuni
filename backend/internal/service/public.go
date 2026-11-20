@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/mail"
 	"strings"
@@ -19,11 +20,11 @@ type PublicProgram struct {
 }
 
 func (s *Service) PublicChecklist(ctx context.Context, programID uuid.UUID, profile requirements.Profile) (*PublicProgram, error) {
-	p, err := s.getProgram(ctx, s.DB.Pool, programID)
+	p, err := getProgram(ctx, s.DB.Q(), programID)
 	if err != nil {
 		return nil, err
 	}
-	cl, err := requirements.Build(p.CountryRules, p.Requirements, profile,
+	cl, err := requirements.Build(json.RawMessage(p.CountryRules), json.RawMessage(p.Requirements), profile,
 		requirements.Program{Degree: p.Degree, Language: p.Language}, nil)
 	if err != nil {
 		return nil, err
@@ -45,7 +46,7 @@ func (s *Service) JoinWaitlist(ctx context.Context, in WaitlistInput) error {
 	if in.Kind != "agency" {
 		in.Kind = "student"
 	}
-	_, err = s.DB.Pool.Exec(ctx, `INSERT INTO waitlist(email, kind, program_id) VALUES ($1,$2,$3)
-		ON CONFLICT (lower(email)) DO NOTHING`, addr.Address, in.Kind, in.ProgramID)
+	_, err = s.DB.Q().Exec(ctx, `INSERT INTO waitlist(id, email, kind, program_id, created_at) VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT DO NOTHING`, uuid.New(), strings.ToLower(addr.Address), in.Kind, in.ProgramID, now())
 	return err
 }

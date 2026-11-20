@@ -1,10 +1,14 @@
 // Package service contains the business logic shared by the HTTP API and the
-// background worker.
+// background worker. It works on SQLite and PostgreSQL alike (see internal/db).
+//
+// Tenant rule: every query on tenant tables (students, applications, documents,
+// approvals, portal_accounts, jobs, audit_log) filters by org_id explicitly.
 package service
 
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -14,7 +18,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 
 	"github.com/matkarimovislam6-spec/applyuni/backend/internal/ai"
 	"github.com/matkarimovislam6-spec/applyuni/backend/internal/auth"
@@ -45,6 +48,8 @@ type Service struct {
 	Log        *slog.Logger
 }
 
+func now() time.Time { return time.Now().UTC() }
+
 // ================= Accounts =================
 
 type RegisterInput struct {
@@ -63,8 +68,9 @@ type Session struct {
 }
 
 func (s *Service) Register(ctx context.Context, in RegisterInput) (*Session, error) {
-	in.Email = strings.TrimSpace(strings.ToLower(in.Email))
-	if !strings.Contains(in.Email, "@") || len(in.Password) < 10 || strings.TrimSpace(in.FullName) == "" {
+	in.Email = strings.ToLower(strings.TrimSpace(in.Email))
+	in.FullName = strings.TrimSpace(in.FullName)
+	if !strings.Contains(in.Email, "@") || len(in.Password) < 10 || in.FullName == "" {
 		return nil, fmt.Errorf("%w: valid email, full name and a password of at least 10 characters are required", ErrInvalid)
 	}
 	kind, role, orgName, seats := "personal", "student", in.FullName, 1
@@ -74,7 +80,7 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (*Session, err
 		if strings.TrimSpace(in.OrgName) == "" {
 			return nil, fmt.Errorf("%w: organization name is required", ErrInvalid)
 		}
-		kind, role, orgName, seats = in.AccountType, "owner", in.OrgName, 5 // trial seats until billing exists
+		kind, role, orgName, seats = in.AccountType, "owner", strings.TrimSpace(in.OrgName), 5 // trial seats until billing exists
 	default:
 		return nil, fmt.Errorf("%w: unknown account type", ErrInvalid)
 	}
@@ -83,33 +89,30 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (*Session, err
 		return nil, err
 	}
 
-	var userID, orgID uuid.UUID
-	err = pgx.BeginFunc(ctx, s.DB.Pool, func(tx pgx.Tx) error {
-		if err := tx.QueryRow(ctx, `INSERT INTO users(email,password_hash,full_name) VALUES ($1,$2,$3) RETURNING id`,
-			in.Email, hash, in.FullName).Scan(&userID); err != nil {
-			if strings.Contains(err.Error(), "users_email_lower") {
+	userID, orgID := uuid.New(), uuid.New()
+	err = s.DB.Tx(ctx, func(tx db.Conn) error {
+		if _, err := tx.Exec(ctx, `INSERT INTO users(id, email, password_hash, full_name, created_at) VALUES (?, ?, ?, ?, ?)`,
+			userID, in.Email, hash, in.FullName, now()); err != nil {
+			if db.IsUniqueViolation(err) {
 				return fmt.Errorf("%w: an account with this email already exists", ErrConflict)
 			}
 			return err
 		}
-		if err := tx.QueryRow(ctx, `INSERT INTO organizations(name,kind,seat_limit) VALUES ($1,$2,$3) RETURNING id`,
-			orgName, kind, seats).Scan(&orgID); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO organizations(id, name, kind, seat_limit, created_at) VALUES (?, ?, ?, ?, ?)`,
+			orgID, orgName, kind, seats, now()); err != nil {
 			return err
 		}
-		_, err := tx.Exec(ctx, `INSERT INTO memberships(user_id,org_id,role) VALUES ($1,$2,$3)`, userID, orgID, role)
-		return err
+		if _, err := tx.Exec(ctx, `INSERT INTO memberships(user_id, org_id, role) VALUES (?, ?, ?)`, userID, orgID, role); err != nil {
+			return err
+		}
+		if role == "student" { // B2C: the account holder is the student
+			_, err := s.insertStudent(ctx, tx, orgID, &userID, in.FullName, in.Email)
+			return err
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err
-	}
-	if role == "student" {
-		// B2C: the account holder is the student.
-		if err := s.DB.Tenant(ctx, orgID, func(tx pgx.Tx) error {
-			_, err := s.insertStudent(ctx, tx, orgID, &userID, in.FullName, in.Email)
-			return err
-		}); err != nil {
-			return nil, err
-		}
 	}
 	return s.session(userID, orgID, role)
 }
@@ -117,10 +120,10 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (*Session, err
 func (s *Service) Login(ctx context.Context, email, password string) (*Session, error) {
 	var userID, orgID uuid.UUID
 	var hash, role string
-	err := s.DB.Pool.QueryRow(ctx, `
+	err := s.DB.Q().QueryRow(ctx, `
 		SELECT u.id, u.password_hash, m.org_id, m.role FROM users u
 		JOIN memberships m ON m.user_id = u.id
-		WHERE lower(u.email) = lower($1) ORDER BY m.role LIMIT 1`, strings.TrimSpace(email)).Scan(&userID, &hash, &orgID, &role)
+		WHERE u.email = ? ORDER BY m.role LIMIT 1`, strings.ToLower(strings.TrimSpace(email))).Scan(&userID, &hash, &orgID, &role)
 	if err != nil || !auth.CheckPassword(hash, password) {
 		return nil, ErrBadLogin
 	}
@@ -151,17 +154,18 @@ type Me struct {
 
 func (s *Service) Me(ctx context.Context, c *auth.Claims) (*Me, error) {
 	m := &Me{UserID: c.UserID, Role: c.Role, OrgID: c.OrgID}
-	if err := s.DB.Pool.QueryRow(ctx, `SELECT u.full_name, u.email, o.name, o.kind, o.plan, o.seat_limit
-		FROM users u, organizations o WHERE u.id=$1 AND o.id=$2`, c.UserID, c.OrgID).
+	// Account data is not tenant data: read it outside the tenant transaction.
+	if err := s.DB.Q().QueryRow(ctx, `SELECT u.full_name, u.email, o.name, o.kind, o.plan, o.seat_limit
+		FROM users u, organizations o WHERE u.id = ? AND o.id = ?`, c.UserID, c.OrgID).
 		Scan(&m.FullName, &m.Email, &m.OrgName, &m.OrgKind, &m.Plan, &m.SeatLimit); err != nil {
 		return nil, err
 	}
-	err := s.DB.Tenant(ctx, c.OrgID, func(tx pgx.Tx) error {
-		if err := tx.QueryRow(ctx, `SELECT count(*) FROM students`).Scan(&m.SeatsUsed); err != nil {
+	err := s.DB.Tenant(ctx, c.OrgID, func(tx db.Conn) error {
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM students WHERE org_id = ?`, c.OrgID).Scan(&m.SeatsUsed); err != nil {
 			return err
 		}
 		var sid uuid.UUID
-		if err := tx.QueryRow(ctx, `SELECT id FROM students WHERE user_id=$1`, c.UserID).Scan(&sid); err == nil {
+		if err := tx.QueryRow(ctx, `SELECT id FROM students WHERE org_id = ? AND user_id = ?`, c.OrgID, c.UserID).Scan(&sid); err == nil {
 			m.StudentID = &sid
 		}
 		return nil
@@ -172,29 +176,29 @@ func (s *Service) Me(ctx context.Context, c *auth.Claims) (*Me, error) {
 // ================= Catalogue =================
 
 type ProgramInfo struct {
-	ID             uuid.UUID       `json:"id"`
-	Name           string          `json:"name"`
-	Degree         string          `json:"degree"`
-	Language       string          `json:"language"`
-	University     string          `json:"university"`
-	City           string          `json:"city"`
-	Country        string          `json:"country"`
-	Website        string          `json:"website"`
-	Portal         string          `json:"portal"`
-	TuitionEURYear *int            `json:"tuition_eur_year"`
-	ApplicationFee *int            `json:"application_fee_eur"`
-	Deadline       *time.Time      `json:"deadline"`
-	SourceURL      *string         `json:"source_url"`
-	VerifiedAt     *time.Time      `json:"verified_at"`
-	Requirements   json.RawMessage `json:"-"`
-	CountryRules   json.RawMessage `json:"-"`
+	ID             uuid.UUID  `json:"id"`
+	Name           string     `json:"name"`
+	Degree         string     `json:"degree"`
+	Language       string     `json:"language"`
+	University     string     `json:"university"`
+	City           string     `json:"city"`
+	Country        string     `json:"country"`
+	Website        string     `json:"website"`
+	Portal         string     `json:"portal"`
+	TuitionEURYear *int       `json:"tuition_eur_year"`
+	ApplicationFee *int       `json:"application_fee_eur"`
+	Deadline       *time.Time `json:"deadline"`
+	SourceURL      *string    `json:"source_url"`
+	VerifiedAt     *time.Time `json:"verified_at"`
+	Requirements   db.JSON    `json:"-"`
+	CountryRules   db.JSON    `json:"-"`
 }
 
-const programSelect = `SELECT p.id, p.name, p.degree, p.language, u.name, coalesce(u.city,''), c.code, coalesce(u.website,''), u.portal,
+const programSelect = `SELECT p.id, p.name, p.degree, p.language, u.name, coalesce(u.city, ''), c.code, coalesce(u.website, ''), u.portal,
 	p.tuition_eur_year, p.application_fee_eur, p.deadline, p.source_url, p.verified_at, p.requirements, c.rules
 	FROM programs p JOIN universities u ON u.id = p.university_id JOIN countries c ON c.code = u.country_code`
 
-func scanProgram(row pgx.Row) (*ProgramInfo, error) {
+func scanProgram(row interface{ Scan(...any) error }) (*ProgramInfo, error) {
 	p := &ProgramInfo{}
 	err := row.Scan(&p.ID, &p.Name, &p.Degree, &p.Language, &p.University, &p.City, &p.Country, &p.Website, &p.Portal,
 		&p.TuitionEURYear, &p.ApplicationFee, &p.Deadline, &p.SourceURL, &p.VerifiedAt, &p.Requirements, &p.CountryRules)
@@ -202,8 +206,9 @@ func scanProgram(row pgx.Row) (*ProgramInfo, error) {
 }
 
 func (s *Service) ListPrograms(ctx context.Context, country, degree string) ([]*ProgramInfo, error) {
-	rows, err := s.DB.Pool.Query(ctx, programSelect+` WHERE ($1='' OR c.code=$1) AND ($2='' OR p.degree=$2) ORDER BY u.name, p.name`,
-		strings.ToUpper(country), degree)
+	country = strings.ToUpper(country)
+	rows, err := s.DB.Q().Query(ctx, programSelect+` WHERE (? = '' OR c.code = ?) AND (? = '' OR p.degree = ?) ORDER BY u.name, p.name`,
+		country, country, degree, degree)
 	if err != nil {
 		return nil, err
 	}
@@ -219,11 +224,9 @@ func (s *Service) ListPrograms(ctx context.Context, country, degree string) ([]*
 	return out, rows.Err()
 }
 
-func (s *Service) getProgram(ctx context.Context, q interface {
-	QueryRow(context.Context, string, ...any) pgx.Row
-}, id uuid.UUID) (*ProgramInfo, error) {
-	p, err := scanProgram(q.QueryRow(ctx, programSelect+` WHERE p.id=$1`, id))
-	if errors.Is(err, pgx.ErrNoRows) {
+func getProgram(ctx context.Context, q db.Conn, id uuid.UUID) (*ProgramInfo, error) {
+	p, err := scanProgram(q.QueryRow(ctx, programSelect+` WHERE p.id = ?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	return p, err
@@ -232,30 +235,42 @@ func (s *Service) getProgram(ctx context.Context, q interface {
 // ================= Students =================
 
 type Student struct {
-	ID         uuid.UUID       `json:"id"`
-	FullName   string          `json:"full_name"`
-	Email      *string         `json:"email"`
-	EmailAlias *string         `json:"email_alias"`
-	Profile    json.RawMessage `json:"profile"`
-	CreatedAt  time.Time       `json:"created_at"`
+	ID         uuid.UUID `json:"id"`
+	FullName   string    `json:"full_name"`
+	Email      *string   `json:"email"`
+	EmailAlias *string   `json:"email_alias"`
+	Profile    db.JSON   `json:"profile"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
-func (s *Service) insertStudent(ctx context.Context, tx pgx.Tx, orgID uuid.UUID, userID *uuid.UUID, name, email string) (*Student, error) {
-	id := uuid.New()
-	alias := fmt.Sprintf("s-%s@%s", strings.ReplaceAll(id.String(), "-", "")[:12], s.MailDomain)
+const studentCols = `id, full_name, email, email_alias, profile, created_at`
+
+func scanStudent(row interface{ Scan(...any) error }) (*Student, error) {
 	st := &Student{}
-	err := tx.QueryRow(ctx, `INSERT INTO students(id,org_id,user_id,full_name,email,email_alias) VALUES ($1,$2,$3,$4,NULLIF($5,''),$6)
-		RETURNING id, full_name, email, email_alias, profile, created_at`, id, orgID, userID, name, email, alias).
-		Scan(&st.ID, &st.FullName, &st.Email, &st.EmailAlias, &st.Profile, &st.CreatedAt)
+	err := row.Scan(&st.ID, &st.FullName, &st.Email, &st.EmailAlias, &st.Profile, &st.CreatedAt)
 	return st, err
 }
 
-// authorizeStudent enforces that B2C students only touch their own record.
-// Tenant isolation between orgs is already enforced by RLS.
-func authorizeStudent(ctx context.Context, tx pgx.Tx, c *auth.Claims, studentID uuid.UUID) error {
+func (s *Service) insertStudent(ctx context.Context, tx db.Conn, orgID uuid.UUID, userID *uuid.UUID, name, email string) (*Student, error) {
+	id := uuid.New()
+	alias := fmt.Sprintf("s-%s@%s", strings.ReplaceAll(id.String(), "-", "")[:12], s.MailDomain)
+	var emailArg any
+	if email = strings.ToLower(strings.TrimSpace(email)); email != "" {
+		emailArg = email
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO students(id, org_id, user_id, full_name, email, email_alias, profile, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, '{}', ?)`, id, orgID, userID, name, emailArg, alias, now()); err != nil {
+		return nil, err
+	}
+	return scanStudent(tx.QueryRow(ctx, `SELECT `+studentCols+` FROM students WHERE org_id = ? AND id = ?`, orgID, id))
+}
+
+// authorizeStudent checks the student belongs to the caller's org, and that a
+// B2C student only touches their own record.
+func authorizeStudent(ctx context.Context, tx db.Conn, c *auth.Claims, studentID uuid.UUID) error {
 	var owner *uuid.UUID
-	if err := tx.QueryRow(ctx, `SELECT user_id FROM students WHERE id=$1`, studentID).Scan(&owner); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+	if err := tx.QueryRow(ctx, `SELECT user_id FROM students WHERE org_id = ? AND id = ?`, c.OrgID, studentID).Scan(&owner); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}
 		return err
@@ -271,11 +286,11 @@ func authorizeStudent(ctx context.Context, tx pgx.Tx, c *auth.Claims, studentID 
 
 func (s *Service) ListStudents(ctx context.Context, c *auth.Claims) ([]*Student, error) {
 	out := []*Student{}
-	err := s.DB.Tenant(ctx, c.OrgID, func(tx pgx.Tx) error {
-		q := `SELECT id, full_name, email, email_alias, profile, created_at FROM students`
-		args := []any{}
+	err := s.DB.Tenant(ctx, c.OrgID, func(tx db.Conn) error {
+		q := `SELECT ` + studentCols + ` FROM students WHERE org_id = ?`
+		args := []any{c.OrgID}
 		if !c.IsStaff() {
-			q += ` WHERE user_id=$1`
+			q += ` AND user_id = ?`
 			args = append(args, c.UserID)
 		}
 		rows, err := tx.Query(ctx, q+` ORDER BY created_at DESC`, args...)
@@ -284,8 +299,8 @@ func (s *Service) ListStudents(ctx context.Context, c *auth.Claims) ([]*Student,
 		}
 		defer rows.Close()
 		for rows.Next() {
-			st := &Student{}
-			if err := rows.Scan(&st.ID, &st.FullName, &st.Email, &st.EmailAlias, &st.Profile, &st.CreatedAt); err != nil {
+			st, err := scanStudent(rows)
+			if err != nil {
 				return err
 			}
 			out = append(out, st)
@@ -302,37 +317,36 @@ func (s *Service) CreateStudent(ctx context.Context, c *auth.Claims, name, email
 	if strings.TrimSpace(name) == "" {
 		return nil, fmt.Errorf("%w: full name is required", ErrInvalid)
 	}
-	var seats int
-	if err := s.DB.Pool.QueryRow(ctx, `SELECT seat_limit FROM organizations WHERE id=$1`, c.OrgID).Scan(&seats); err != nil {
-		return nil, err
-	}
 	var st *Student
-	err := s.DB.Tenant(ctx, c.OrgID, func(tx pgx.Tx) error {
-		var used int
-		if err := tx.QueryRow(ctx, `SELECT count(*) FROM students`).Scan(&used); err != nil {
+	err := s.DB.Tenant(ctx, c.OrgID, func(tx db.Conn) error {
+		var seats, used int
+		if err := tx.QueryRow(ctx, `SELECT seat_limit FROM organizations WHERE id = ?`, c.OrgID).Scan(&seats); err != nil {
+			return err
+		}
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM students WHERE org_id = ?`, c.OrgID).Scan(&used); err != nil {
 			return err
 		}
 		if used >= seats {
 			return ErrSeatLimit
 		}
 		var err error
-		st, err = s.insertStudent(ctx, tx, c.OrgID, nil, name, email)
-		if err == nil {
-			err = audit(ctx, tx, c, "student.create", st.ID.String())
+		if st, err = s.insertStudent(ctx, tx, c.OrgID, nil, strings.TrimSpace(name), email); err != nil {
+			return err
 		}
-		return err
+		return audit(ctx, tx, c, "student.create", st.ID.String())
 	})
 	return st, err
 }
 
 func (s *Service) GetStudent(ctx context.Context, c *auth.Claims, id uuid.UUID) (*Student, error) {
-	st := &Student{}
-	err := s.DB.Tenant(ctx, c.OrgID, func(tx pgx.Tx) error {
+	var st *Student
+	err := s.DB.Tenant(ctx, c.OrgID, func(tx db.Conn) error {
 		if err := authorizeStudent(ctx, tx, c, id); err != nil {
 			return err
 		}
-		return tx.QueryRow(ctx, `SELECT id, full_name, email, email_alias, profile, created_at FROM students WHERE id=$1`, id).
-			Scan(&st.ID, &st.FullName, &st.Email, &st.EmailAlias, &st.Profile, &st.CreatedAt)
+		var err error
+		st, err = scanStudent(tx.QueryRow(ctx, `SELECT `+studentCols+` FROM students WHERE org_id = ? AND id = ?`, c.OrgID, id))
+		return err
 	})
 	return st, err
 }
@@ -342,14 +356,14 @@ func (s *Service) UpdateProfile(ctx context.Context, c *auth.Claims, id uuid.UUI
 	if err := json.Unmarshal(profile, &probe); err != nil {
 		return nil, fmt.Errorf("%w: profile must be a JSON object", ErrInvalid)
 	}
-	err := s.DB.Tenant(ctx, c.OrgID, func(tx pgx.Tx) error {
+	err := s.DB.Tenant(ctx, c.OrgID, func(tx db.Conn) error {
 		if err := authorizeStudent(ctx, tx, c, id); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(ctx, `UPDATE students SET profile=$2 WHERE id=$1`, id, profile); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE students SET profile = ? WHERE org_id = ? AND id = ?`, string(profile), c.OrgID, id); err != nil {
 			return err
 		}
-		return s.refreshApplications(ctx, tx, id)
+		return s.refreshApplications(ctx, tx, c.OrgID, id)
 	})
 	if err != nil {
 		return nil, err
@@ -357,24 +371,29 @@ func (s *Service) UpdateProfile(ctx context.Context, c *auth.Claims, id uuid.UUI
 	return s.GetStudent(ctx, c, id)
 }
 
-// DeleteStudent erases a student completely. Ciphertext is removed from the
-// object store and the wrapped keys are deleted with the rows, so any backup
-// copy of the ciphertext is unreadable (crypto-shredding).
+// DeleteStudent erases a student completely: rows (including wrapped keys) and
+// the ciphertext objects. Any backup copy of the ciphertext is unreadable
+// without the deleted keys (crypto-shredding).
 func (s *Service) DeleteStudent(ctx context.Context, c *auth.Claims, id uuid.UUID) error {
 	var keys []string
-	err := s.DB.Tenant(ctx, c.OrgID, func(tx pgx.Tx) error {
+	err := s.DB.Tenant(ctx, c.OrgID, func(tx db.Conn) error {
 		if err := authorizeStudent(ctx, tx, c, id); err != nil {
 			return err
 		}
-		rows, err := tx.Query(ctx, `SELECT object_key FROM documents WHERE student_id=$1`, id)
+		rows, err := tx.Query(ctx, `SELECT object_key FROM documents WHERE org_id = ? AND student_id = ?`, c.OrgID, id)
 		if err != nil {
 			return err
 		}
-		keys, err = pgx.CollectRows(rows, pgx.RowTo[string])
-		if err != nil {
-			return err
+		for rows.Next() {
+			var k string
+			if err := rows.Scan(&k); err != nil {
+				rows.Close()
+				return err
+			}
+			keys = append(keys, k)
 		}
-		if _, err := tx.Exec(ctx, `DELETE FROM students WHERE id=$1`, id); err != nil {
+		rows.Close()
+		if _, err := tx.Exec(ctx, `DELETE FROM students WHERE org_id = ? AND id = ?`, c.OrgID, id); err != nil {
 			return err
 		}
 		return audit(ctx, tx, c, "student.delete", id.String())
@@ -390,8 +409,17 @@ func (s *Service) DeleteStudent(ctx context.Context, c *auth.Claims, id uuid.UUI
 	return nil
 }
 
-func audit(ctx context.Context, tx pgx.Tx, c *auth.Claims, action, target string) error {
-	_, err := tx.Exec(ctx, `INSERT INTO audit_log(org_id,user_id,action,target) VALUES ($1,$2,$3,$4)`, c.OrgID, c.UserID, action, target)
+func audit(ctx context.Context, tx db.Conn, c *auth.Claims, action, target string) error {
+	_, err := tx.Exec(ctx, `INSERT INTO audit_log(org_id, user_id, action, target, at) VALUES (?, ?, ?, ?, ?)`,
+		c.OrgID, c.UserID, action, target, now())
+	return err
+}
+
+func enqueue(ctx context.Context, tx db.Conn, orgID uuid.UUID, kind string, payload any) error {
+	b, _ := json.Marshal(payload)
+	t := now()
+	_, err := tx.Exec(ctx, `INSERT INTO jobs(org_id, kind, payload, run_after, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		orgID, kind, string(b), t, t, t)
 	return err
 }
 

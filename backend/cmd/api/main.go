@@ -37,7 +37,7 @@ func run(log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	database, err := db.Connect(ctx, cfg.DatabaseURL)
+	database, err := db.Open(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return err
 	}

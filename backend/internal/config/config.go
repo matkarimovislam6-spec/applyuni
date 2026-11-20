@@ -39,7 +39,7 @@ type Config struct {
 func Load() (*Config, error) {
 	c := &Config{
 		HTTPAddr:        env("HTTP_ADDR", ":8080"),
-		DatabaseURL:     env("DATABASE_URL", "postgres://applyuni:applyuni@localhost:5432/applyuni?sslmode=disable"),
+		DatabaseURL:     env("DATABASE_URL", "sqlite:./data/applyuni.db"),
 		JWTSecret:       os.Getenv("JWT_SECRET"),
 		CORSOrigin:      env("CORS_ORIGIN", "http://localhost:5173"),
 		MaxUploadMB:     int64(envInt("MAX_UPLOAD_MB", 20)),

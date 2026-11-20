@@ -16,19 +16,19 @@ The account, upload, approval and submission API described below is built and te
 
 | Part | Choice |
 |---|---|
-| Backend | Go 1.27: chi, pgx, Anthropic Go SDK |
+| Backend | Go 1.27: chi, database/sql, Anthropic Go SDK |
 | Frontend | React 18 (JavaScript) + Vite |
-| Database | PostgreSQL 16 with row-level security per tenant |
+| Database | **SQLite** for development (one file, no server); **PostgreSQL 16** for production, adding row-level security per tenant. Chosen by `DATABASE_URL`. |
 | Files | S3-compatible (MinIO) storing **ciphertext only** |
 | Keys | OpenBao/Vault transit (envelope encryption) |
-| Jobs | Postgres queue (`FOR UPDATE SKIP LOCKED`), so no separate queue server is needed |
+| Jobs | Queue table in the same database (`SKIP LOCKED` on PostgreSQL), so no separate queue server is needed |
 
 Student personal data must be hosted **in Uzbekistan** (Law on Personal Data, art. 27¹). Run Postgres, MinIO and OpenBao on Uzbek infrastructure. The public university catalogue can live anywhere.
 
 ## How it works
 
 ```
-Student/Agency ─► React ─► Go API ─┬─► Postgres (RLS: org_id = app.org_id)
+Student/Agency ─► React ─► Go API ─┬─► SQLite / Postgres (every query scoped by org_id)
                                    ├─► Envelope encryption ─► Vault transit (KEK)
                                    │         └─► MinIO (ciphertext)
                                    └─► jobs ─► worker ─┬─► Claude: document check
@@ -45,20 +45,29 @@ Student/Agency ─► React ─► Go API ─┬─► Postgres (RLS: org_id = a
 ## Run locally
 
 ```bash
-docker compose up -d                       # postgres, minio, openbao (+ transit key)
-cd backend && cp .env.example .env         # set JWT_SECRET; ANTHROPIC_API_KEY optional
-set -a && . ./.env && set +a && go run ./cmd/api
+cd backend && cp .env.example .env         # set JWT_SECRET and LOCAL_KEK_BASE64 (openssl rand -base64 32)
+# for the simplest setup also set KMS_PROVIDER=local and STORAGE_PROVIDER=local
+set -a && . ./.env && set +a && go run ./cmd/api   # creates data/applyuni.db on first run
 
 cd frontend && npm install && npm run dev  # http://localhost:5173 (proxies /api to :8080)
 ```
 
-Tests: `cd backend && go test ./...`
+Tests: `cd backend && go test ./...` runs the whole core flow on a temporary SQLite file (sign-up, profile, application, encrypted uploads, approval, submission, tenant isolation, seat limits, deletion).
+
+### Moving to PostgreSQL
+
+1. Create an empty database, e.g. `createdb applyuni`.
+2. Set `DATABASE_URL=postgres://user:pass@host:5432/applyuni?sslmode=disable`. Migrations in `internal/db/migrations/postgres` run on start.
+3. Run the same tests against it: `TEST_POSTGRES_URL=postgres://… go test ./internal/service/` (use an empty database).
+4. For Vault and MinIO as well: `docker compose up -d`, then set `KMS_PROVIDER=vault` and `STORAGE_PROVIDER=s3`.
+
+Schema changes go in both `internal/db/migrations/sqlite` and `internal/db/migrations/postgres`. Data in the SQLite file is not migrated automatically.
 
 Without `ANTHROPIC_API_KEY`, documents stay "Waiting for review". B2B staff can accept or reject them manually. `PORTAL_DRY_RUN=true` simulates submission. **Never enable it in production.**
 
 ## B2B
 
-Registering as an agency or school creates an org with seats (5 during the trial). Staff (`owner`, `counselor`) add students, see all of them, and can accept or reject documents. Postgres RLS guarantees no tenant can read another's rows, even if application code has a bug.
+Registering as an agency or school creates an org with seats (5 during the trial). Staff (`owner`, `counselor`) add students, see all of them, and can accept or reject documents. Every query on tenant data filters by `org_id`, and the tests check that one tenant can't read, change or delete another's data. On PostgreSQL, row-level security enforces the same rule a second time inside the database.
 
 ## Not built yet
 
