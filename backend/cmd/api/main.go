@@ -79,7 +79,7 @@ func run(log *slog.Logger) error {
 	tokens := auth.NewIssuer(cfg.JWTSecret)
 	svc := &service.Service{
 		DB: database, Env: crypto.NewEnvelope(kw), Store: store, AI: aiClient,
-		Portals: portal.NewRegistry(os.Getenv("PORTAL_DRY_RUN") == "true"),
+		Portals: portals(log),
 		Tokens:  tokens, MailDomain: envOr("MAIL_DOMAIN", "inbox.applyuni.local"), Log: log,
 	}
 	if cfg.RunWorker {
@@ -109,4 +109,25 @@ func envOr(k, def string) string {
 		return v
 	}
 	return def
+}
+
+// portals registers the real university flows (portal.Known) with a headless
+// Chrome runner. Universities without a flow fall back to the dry-run adapter
+// in development (PORTAL_DRY_RUN=true) or are parked with a clear note.
+func portals(log *slog.Logger) *portal.Registry {
+	reg := portal.NewRegistry(os.Getenv("PORTAL_DRY_RUN") == "true")
+	runner := &portal.Runner{
+		ChromePath: os.Getenv("CHROME_PATH"), // empty: find Chrome on PATH
+		Headless:   true,
+		Inbox:      portal.NewMemoryInbox(), // replaced by the mail service once inbound email is set up
+	}
+	for _, f := range portal.Known {
+		if err := f.Validate(); err != nil {
+			log.Error("skipping invalid portal flow", "portal", f.Portal, "err", err)
+			continue
+		}
+		reg.Register(f.Portal, portal.FlowAdapter{Flow: f, Runner: runner})
+		log.Info("portal flow registered", "portal", f.Portal)
+	}
+	return reg
 }

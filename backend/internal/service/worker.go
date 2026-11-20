@@ -85,7 +85,8 @@ func (s *Service) RunOne(ctx context.Context) (bool, error) {
 		return true, err
 	}
 	s.Log.Warn("job failed", "id", j.id, "kind", j.kind, "attempt", j.attempts, "err", err)
-	if j.attempts >= maxAttempts {
+	var perm permanent
+	if j.attempts >= maxAttempts || errors.As(err, &perm) {
 		_, _ = s.DB.Q().Exec(ctx, `UPDATE jobs SET status = 'failed', last_error = ?, updated_at = ? WHERE id = ?`, err.Error(), now(), j.id)
 		s.onJobGaveUp(ctx, j, err)
 	} else {
@@ -104,7 +105,7 @@ func (s *Service) onJobGaveUp(ctx context.Context, j job, cause error) {
 			return err
 		case "submit_application":
 			_, err := tx.Exec(ctx, `UPDATE applications SET status = 'needs_attention', status_note = ?, updated_at = ? WHERE org_id = ? AND id = ?`,
-				"Automatic submission failed: "+cause.Error(), now(), j.orgID, j.payload["application_id"])
+				explain(cause), now(), j.orgID, j.payload["application_id"])
 			return err
 		}
 		return nil
@@ -153,6 +154,7 @@ func (s *Service) submitApplication(ctx context.Context, j job) error {
 		return err
 	}
 	var bundle portal.Bundle
+	var studentID uuid.UUID
 	err = s.DB.Tenant(ctx, j.orgID, func(tx db.Conn) error {
 		a, err := getApp(ctx, tx, j.orgID, appID)
 		if err != nil {
@@ -193,6 +195,16 @@ func (s *Service) submitApplication(ctx context.Context, j job) error {
 			}
 			bundle.Documents = append(bundle.Documents, portal.Document{Type: d.Type, Filename: doc.Filename, ContentType: doc.ContentType, Data: data})
 		}
+		// The student's login on this portal (created once, stored encrypted).
+		user, pw, err := s.portalLogin(ctx, tx, j.orgID, a.StudentID, a.Program.Portal, bundle.StudentEmail)
+		if err != nil {
+			return err
+		}
+		bundle.Fields = portal.BuildFields(snap.Student, bundle.StudentEmail, user, pw, snap.Profile, a.Program.Name, a.Program.Degree)
+		// An approval is on record and every document matches the hash that
+		// was approved: only now may a flow press its Submit step.
+		bundle.Approved = true
+		studentID = a.StudentID
 		_, err = tx.Exec(ctx, `UPDATE applications SET status = 'submitting', updated_at = ? WHERE org_id = ? AND id = ?`, now(), j.orgID, appID)
 		return err
 	})
@@ -214,10 +226,22 @@ func (s *Service) submitApplication(ctx context.Context, j job) error {
 	}
 	res, err := adapter.Submit(ctx, &bundle)
 	if err != nil {
-		return err
+		return classify(err)
 	}
 	return s.DB.Tenant(ctx, j.orgID, func(tx db.Conn) error {
+		// Keep the portal's confirmation page as an encrypted receipt.
+		if len(res.Receipt) > 0 {
+			if _, _, err := s.storeDocument(ctx, tx, j.orgID, studentID, "submission_receipt",
+				fmt.Sprintf("receipt-%s.png", bundle.Portal), "image/png", res.Receipt, "accepted"); err != nil {
+				return err
+			}
+		}
 		t := now()
+		if !res.Submitted { // e.g. a flow running in dry-run mode
+			_, err := tx.Exec(ctx, `UPDATE applications SET status = 'needs_attention', status_note = ?, updated_at = ? WHERE org_id = ? AND id = ?`,
+				res.Note, t, j.orgID, appID)
+			return err
+		}
 		_, err := tx.Exec(ctx, `UPDATE applications SET status = 'submitted', portal_ref = ?, status_note = ?, submitted_at = ?, updated_at = ?
 			WHERE org_id = ? AND id = ?`, res.PortalRef, res.Note, t, t, j.orgID, appID)
 		return err

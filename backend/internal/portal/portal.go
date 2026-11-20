@@ -29,11 +29,22 @@ type Bundle struct {
 	StudentEmail  string // platform alias inbox; the agent reads verification codes here
 	Profile       map[string]any
 	Documents     []Document
+
+	// Fields are the flat values flows fill in, e.g. "student.first_name",
+	// "portal.password", "profile.gpa". Built by the service from the
+	// approved snapshot; see BuildFields.
+	Fields map[string]string
+	// Approved is set only when a recorded approval matches this bundle.
+	// Without it no flow will press its Submit step.
+	Approved bool
 }
 
 type Result struct {
 	PortalRef string
 	Note      string
+	Submitted bool              // the final submit click happened
+	Values    map[string]string // values read from the portal (Read steps)
+	Receipt   []byte            // PNG screenshot of the final page
 }
 
 type Adapter interface {
@@ -73,6 +84,7 @@ type DryRun struct{}
 
 func (DryRun) Submit(_ context.Context, b *Bundle) (*Result, error) {
 	return &Result{
+		Submitted: true,
 		PortalRef: fmt.Sprintf("DRYRUN-%s-%d", b.Portal, time.Now().Unix()),
 		Note:      fmt.Sprintf("Dry run: %d documents would be uploaded to %s.", len(b.Documents), b.Portal),
 	}, nil

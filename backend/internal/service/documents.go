@@ -61,33 +61,19 @@ func (s *Service) UploadDocument(ctx context.Context, c *auth.Claims, studentID 
 	if len(data) == 0 {
 		return nil, fmt.Errorf("%w: empty file", ErrInvalid)
 	}
-	docID := uuid.New()
-	key := fmt.Sprintf("%s/%s/%s", c.OrgID, studentID, docID)
-	sum := sha256.Sum256(data)
-
-	// Encrypt before anything touches storage. The document ID is bound as
-	// associated data, so ciphertext can't be swapped onto another record.
-	sealed, err := s.Env.Seal(ctx, data, docID[:])
-	if err != nil {
-		return nil, err
+	status := "uploaded"
+	if s.AI != nil {
+		status = "analyzing"
 	}
-
 	var doc *Document
-	err = s.DB.Tenant(ctx, c.OrgID, func(tx db.Conn) error {
+	var key string
+	err := s.DB.Tenant(ctx, c.OrgID, func(tx db.Conn) error {
 		if err := authorizeStudent(ctx, tx, c, studentID); err != nil {
 			return err
 		}
-		if err := s.Store.Put(ctx, key, sealed.Ciphertext); err != nil {
-			return fmt.Errorf("store object: %w", err)
-		}
-		status := "uploaded"
-		if s.AI != nil {
-			status = "analyzing"
-		}
-		if _, err := tx.Exec(ctx, `INSERT INTO documents(id, org_id, student_id, doc_type, filename, content_type, size_bytes, sha256,
-			object_key, nonce, wrapped_dek, key_ref, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			docID, c.OrgID, studentID, docType, filename, contentType, len(data), sum[:], key,
-			sealed.Nonce, sealed.WrappedDEK, sealed.KeyRef, status, now()); err != nil {
+		var docID uuid.UUID
+		var err error
+		if docID, key, err = s.storeDocument(ctx, tx, c.OrgID, studentID, docType, filename, contentType, data, status); err != nil {
 			return err
 		}
 		if s.AI != nil {
@@ -105,10 +91,35 @@ func (s *Service) UploadDocument(ctx context.Context, c *auth.Claims, studentID 
 		return err
 	})
 	if err != nil {
-		_ = s.Store.Delete(ctx, key) // don't leave orphaned ciphertext
+		if key != "" {
+			_ = s.Store.Delete(ctx, key) // don't leave orphaned ciphertext
+		}
 		return nil, err
 	}
 	return doc, nil
+}
+
+// storeDocument encrypts data with its own key, puts the ciphertext in the
+// object store and records it. The document ID is bound as associated data,
+// so ciphertext can't be swapped onto another record. Callers authorize first.
+func (s *Service) storeDocument(ctx context.Context, tx db.Conn, orgID, studentID uuid.UUID, docType, filename, contentType string, data []byte, status string) (uuid.UUID, string, error) {
+	docID := uuid.New()
+	key := fmt.Sprintf("%s/%s/%s", orgID, studentID, docID)
+	sum := sha256.Sum256(data)
+	sealed, err := s.Env.Seal(ctx, data, docID[:])
+	if err != nil {
+		return docID, "", err
+	}
+	if err := s.Store.Put(ctx, key, sealed.Ciphertext); err != nil {
+		return docID, "", fmt.Errorf("store object: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO documents(id, org_id, student_id, doc_type, filename, content_type, size_bytes, sha256,
+		object_key, nonce, wrapped_dek, key_ref, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		docID, orgID, studentID, docType, filename, contentType, len(data), sum[:], key,
+		sealed.Nonce, sealed.WrappedDEK, sealed.KeyRef, status, now()); err != nil {
+		return docID, key, err
+	}
+	return docID, key, nil
 }
 
 func (s *Service) ListDocuments(ctx context.Context, c *auth.Claims, studentID uuid.UUID) ([]*Document, error) {
