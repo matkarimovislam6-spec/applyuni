@@ -118,7 +118,7 @@ em { font-style: italic; }
 .a1 { top: 40px; left: 3%; }
 .a2 { top: 70px; right: 4%; animation-delay: -4s; }
 .a3 { top: 46%; left: 6%; animation-delay: -8s; }
-.a4 { top: 38%; right: 12%; animation-delay: -2s; }
+.a4 { top: 31%; right: 9%; animation-delay: -2s; }
 @keyframes drift { to { transform: translate(10px, -14px); } }
 @media (prefers-reduced-motion: reduce) {
   .float, .rotator-word { animation: none; }
@@ -221,7 +221,7 @@ th.us { color: var(--clay); }
 .panel.dark .mono-label, .panel.dark p { color: color-mix(in srgb, var(--paper) 72%, transparent); }
 .panel.dark .btn.primary { background: var(--clay); border-color: var(--clay); color: var(--clay-ink); }
 .panel.dark input { background: transparent; color: var(--paper); border-color: color-mix(in srgb, var(--paper) 25%, transparent); }
-.panel-ascii { position: absolute; right: -10px; top: -6px; color: color-mix(in srgb, var(--paper) 18%, transparent); }
+.panel-ascii { position: absolute; right: 18px; top: 16px; color: color-mix(in srgb, var(--paper) 18%, transparent); }
 .waitlist { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
 .waitlist input { flex: 1; min-width: 190px; }
 

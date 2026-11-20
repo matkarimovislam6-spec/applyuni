@@ -23,10 +23,10 @@ export default function Landing() {
   return (
     <main>
       <section className="hero">
-        <Ascii size={8} seed={3} className="float a1" />
-        <Ascii size={11} seed={7} className="float a2" />
-        <Ascii size={6} seed={11} className="float a3" />
-        <Ascii size={9} seed={19} className="float a4" />
+        <Ascii art="colosseum" className="float a1" />
+        <Ascii art="pizza" className="float a2" />
+        <Ascii art="espresso" className="float a3" />
+        <Ascii art="pisa" className="float a4" />
         <div className="container hero-inner">
           <p className="mono-label">Italy · bachelor & master · 2027 intake</p>
           <h1 className="display">
@@ -101,7 +101,7 @@ export default function Landing() {
             <Waitlist cta="Join the list" />
           </article>
           <article className="panel dark">
-            <Ascii size={7} seed={23} className="panel-ascii" />
+            <Ascii art="espresso" className="panel-ascii" />
             <p className="mono-label">For agencies & schools</p>
             <h3 className="display-xs">Handle 5× the students</h3>
             <p>One dashboard for every student. AI does the checking, your team approves and submits. Priced per seat.</p>

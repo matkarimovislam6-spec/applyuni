@@ -21,7 +21,7 @@ export default function Programs() {
   return (
     <main>
       <section className="page-head">
-        <Ascii size={9} seed={5} className="float a2" />
+        <Ascii art="colosseum" className="float a2" />
         <div className="container">
           <p className="mono-label">Catalogue · Italy</p>
           <h1 className="display-sm">Find your <em>programme</em></h1>
