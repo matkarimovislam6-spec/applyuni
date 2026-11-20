@@ -18,6 +18,9 @@ type DocRule struct {
 type Step struct {
 	Key   string `json:"key"`
 	Title string `json:"title"`
+	// By says who does the step: "us" (the service) or "you" (only what the
+	// student must do in person, e.g. visa fingerprints).
+	By string `json:"by,omitempty"`
 }
 
 type CountryRules struct {

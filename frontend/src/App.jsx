@@ -14,12 +14,12 @@ import LangSwitch from './LangSwitch.jsx';
 export function Logo() {
   const { t } = useT();
   return (
-    <Link to="/" className="brand" aria-label={t('ApplyUni home')}>
+    <Link to="/" className="brand" aria-label={t('Apply home')}>
       <svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true">
         <rect width="32" height="32" rx="8" fill="var(--clay)" />
         <path d="M16 7 5 12.5 16 18l11-5.5zM9.5 15.5v4.8c0 1.9 3 3.7 6.5 3.7s6.5-1.8 6.5-3.7v-4.8L16 18.8z" fill="var(--paper)" />
       </svg>
-      <span>ApplyUni</span>
+      <span>Apply</span>
     </Link>
   );
 }
@@ -64,7 +64,7 @@ function Shell() {
   return (
     <>
       <header className="topbar">
-        <div className="container topbar-inner">
+        <div className="topbar-inner">
           <Logo />
           <nav>
             <NavLink to="/programs" className="navlink hide-sm">{t('Universities')}</NavLink>

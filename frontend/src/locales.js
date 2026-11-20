@@ -3,7 +3,7 @@
 // scripts/check-i18n.mjs fails the build check if a key is missing here.
 export const DICT = {
   // ---- header, footer, common ----
-  'ApplyUni home': ['ApplyUni bosh sahifasi', 'Главная ApplyUni'],
+  'Apply home': ['Apply bosh sahifasi', 'Главная Apply'],
   'Universities': ['Universitetlar', 'Университеты'],
   'How it works': ['Qanday ishlaydi', 'Как это работает'],
   'For agencies': ['Agentliklar uchun', 'Для агентств'],
@@ -88,7 +88,6 @@ export const DICT = {
   'Questions': ['Savollar', 'Вопросы'],
   'Things students ask us': ["Talabalar ko'p so'raydigan savollar", 'Что спрашивают студенты'],
   'Do I really not need an agency?': ['Menga rostdan ham agentlik kerak emasmi?', 'Мне правда не нужно агентство?'],
-  'No. The process is long but not hard: the university application, then the visa steps for your country. We walk you through each one.': ["Yo'q. Jarayon uzoq, lekin qiyin emas: universitetga ariza, keyin mamlakatingiz uchun viza bosqichlari. Har birida sizga yo'l ko'rsatamiz.", 'Нет. Процесс долгий, но несложный: заявка в университет, затем визовые шаги для вашей страны. Мы проведём вас через каждый.'],
   'I finished 11 years of school. Can I apply for a bachelor?': ['Men maktabda 11 yil o\'qiganman. Bakalavrga topshira olamanmi?', 'Я окончил 11 классов. Могу ли я поступить в бакалавриат?'],
   'It depends on the country. Italy needs 12 years, so with 11 you need a completed university year or a foundation year. Germany usually needs a Studienkolleg (foundation year) or completed university study. US universities accept a finished secondary school certificate. Your profile shows which applies to you.': ["Mamlakatga bog'liq. Italiya 12 yil talab qiladi, shuning uchun 11 yil bilan universitetning bir yili yoki tayyorlov yili kerak. Germaniya odatda Studienkolleg (tayyorlov yili) yoki universitetda o'qishni talab qiladi. AQSh universitetlari o'rta maktab attestatini qabul qiladi. Profilingiz sizga qaysi biri tegishli ekanini ko'rsatadi.", 'Зависит от страны. Италия требует 12 лет, поэтому с 11 нужен оконченный курс университета или подготовительный год. Германия обычно требует Studienkolleg (подготовительный год) или учёбу в университете. Университеты США принимают аттестат о среднем образовании. Ваш профиль покажет, что подходит именно вам.'],
   "What do US universities need that Europe doesn't?": ["AQSh universitetlari Yevropadan farqli o'laroq nimani talab qiladi?", 'Что нужно университетам США, чего не требует Европа?'],
@@ -106,6 +105,11 @@ export const DICT = {
   'Programme': ['Dastur', 'Программа'],
   '{n} programmes': ['{n} ta dastur', '{n} программа|{n} программы|{n} программ'],
   '← Country': ['← Davlat', '← Страна'],
+  'After the documents, we take over': ["Hujjatlardan keyin hammasini biz qilamiz", 'После документов всё делаем мы'],
+  'Registration, application fees, submission, visa paperwork: all included. You only do what the law requires in person.': ["Ro'yxatdan o'tish, ariza to'lovlari, topshirish, viza hujjatlari: hammasi narxga kiritilgan. Siz faqat qonun bo'yicha shaxsan qilinadigan ishni qilasiz.", 'Регистрация, сборы за подачу, подача заявки, визовые документы: всё включено. Лично вы делаете только то, что закон требует сделать самому.'],
+  'We do it': ['Biz qilamiz', 'Делаем мы'],
+  'Your part': ['Sizning qismingiz', 'Ваша часть'],
+  "No, and you don't need to do the agency's work either. We register you, pay the application fees, submit after your approval and prepare your visa file. You only upload documents and go to the visa appointment in person.": ["Yo'q, agentlik ishini o'zingiz qilishingiz ham shart emas. Sizni ro'yxatdan o'tkazamiz, ariza to'lovlarini to'laymiz, tasdiqlaganingizdan keyin topshiramiz va viza hujjatlarini tayyorlaymiz. Siz faqat hujjatlarni yuklaysiz va viza markaziga o'zingiz borasiz.", 'Нет, и делать работу агентства самому тоже не нужно. Мы регистрируем вас, оплачиваем сборы, подаём заявку после вашего подтверждения и готовим визовые документы. Вы только загружаете документы и лично приходите на подачу визы.'],
   'Answer': ['Javob bering', 'Ответьте'],
   'Your list': ["Ro'yxatingiz", 'Ваш список'],
   'Start over': ['Qaytadan boshlash', 'Начать заново'],
@@ -207,7 +211,6 @@ export const DICT = {
   'Mixed (some English, some Uzbek or Russian)': ["Aralash (bir qismi ingliz, bir qismi o'zbek yoki rus tilida)", 'Смешанный (часть на английском, часть на узбекском или русском)'],
   'I want a regional (DSU) scholarship': ['Mintaqaviy (DSU) stipendiyasini xohlayman', 'Хочу региональную стипендию (DSU)'],
   'Your documents': ['Hujjatlaringiz', 'Ваши документы'],
-  'After the documents': ['Hujjatlardan keyin', 'После документов'],
   'Want us to handle the rest?': ['Qolganini biz bajaraylikmi?', 'Хотите, чтобы остальное сделали мы?'],
   'Upload your documents, let AI check them, approve once, and we submit to {university}. Coming soon.': ["Hujjatlaringizni yuklang, AI ularni tekshirsin, bir marta tasdiqlang — biz {university} ga topshiramiz. Tez orada.", 'Загрузите документы, ИИ их проверит, вы подтвердите один раз — и мы подадим заявку в {university}. Скоро.'],
 
@@ -234,7 +237,7 @@ export const DICT = {
   'One moment…': ['Bir daqiqa…', 'Минутку…'],
   'Create account': ['Hisob yaratish', 'Создать аккаунт'],
   'Already have an account?': ['Hisobingiz bormi?', 'Уже есть аккаунт?'],
-  'New to ApplyUni?': ['ApplyUni\'da yangimisiz?', 'Впервые в ApplyUni?'],
+  'New to Apply?': ['Apply\'da yangimisiz?', 'Впервые в Apply?'],
 
   // ---- account ----
   'Hi,': ['Salom,', 'Привет,'],

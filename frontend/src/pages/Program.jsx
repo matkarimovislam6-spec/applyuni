@@ -160,9 +160,19 @@ export default function Program() {
               ))}
             </ol>
           </div>
-          <div className="card">
-            <h2>{t('After the documents')}</h2>
-            <ol className="steps">{cl.steps.map((s) => <li key={s.key}>{s.title}</li>)}</ol>
+          <div className="card stack">
+            <div>
+              <h2>{t('After the documents, we take over')}</h2>
+              <p className="small muted">{t('Registration, application fees, submission, visa paperwork: all included. You only do what the law requires in person.')}</p>
+            </div>
+            <ol className="steps">
+              {cl.steps.map((s) => (
+                <li key={s.key}>
+                  <span className={`step-by ${s.by === 'you' ? 'you' : 'us'}`}>{t(s.by === 'you' ? 'Your part' : 'We do it')}</span>
+                  {s.title}
+                </li>
+              ))}
+            </ol>
           </div>
           <div className="card stack cta">
             <h3>{t('Want us to handle the rest?')}</h3>

@@ -100,7 +100,7 @@ export default function Auth({ mode }) {
         <p className="small muted center-text">
           {isSignup
             ? <>{t('Already have an account?')} <Link to="/login" state={{ from }}>{t('Log in')}</Link></>
-            : <>{t('New to ApplyUni?')} <Link to="/signup" state={{ from }}>{t('Create an account')}</Link></>}
+            : <>{t('New to Apply?')} <Link to="/signup" state={{ from }}>{t('Create an account')}</Link></>}
         </p>
       </form>
     </main>
